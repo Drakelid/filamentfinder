@@ -203,6 +203,7 @@ export interface Product {
   updated_at: string
   last_seen_at: string | null
   latest_price: LatestPrice | null
+  price_per_kg: number | null
   source_name?: string
   source_domain?: string
 }
@@ -386,7 +387,9 @@ export const api = {
       brand?: string;
       source_id?: number; 
       active?: boolean; 
-      search?: string 
+      search?: string
+      skip?: number
+      limit?: number
     }) => {
       const searchParams = new URLSearchParams()
       if (params?.category) searchParams.set('category', params.category)
@@ -397,6 +400,8 @@ export const api = {
       if (params?.source_id) searchParams.set('source_id', params.source_id.toString())
       if (params?.active !== undefined) searchParams.set('active', params.active.toString())
       if (params?.search) searchParams.set('search', params.search)
+      if (params?.skip !== undefined) searchParams.set('skip', params.skip.toString())
+      if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
       const query = searchParams.toString()
       return fetchApi<{ items: Product[]; total: number }>(`/products${query ? `?${query}` : ''}`)
     },

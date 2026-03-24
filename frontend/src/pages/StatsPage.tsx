@@ -260,12 +260,18 @@ export default function StatsPage() {
   const { data, isLoading, error } = useQuery<StatsData>({
     queryKey: ['stats'],
     queryFn: api.stats.get,
-    refetchInterval: 5000,
+    refetchInterval: (query) =>
+      (query.state.data as StatsData | undefined)?.overview?.running_crawls ?? 0 > 0
+        ? 5000
+        : 60_000,
   })
   const { data: healthData } = useQuery<HealthData>({
     queryKey: ['stats-health'],
     queryFn: api.stats.health,
-    refetchInterval: 15000,
+    refetchInterval: (query) =>
+      (query.state.data as HealthData | undefined)?.worker?.status === 'active'
+        ? 5000
+        : 60_000,
   })
   
   if (isLoading) {

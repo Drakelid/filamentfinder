@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Search, Filter, Loader2, Package } from 'lucide-react'
+import { Search, Filter, Loader2, Package, Download, ChevronLeft, ChevronRight } from 'lucide-react'
 import { api, Product } from '../api'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -53,17 +53,21 @@ export default function ProductsPage() {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  
+  const PAGE_SIZE = 24
+  const [page, setPage] = useState(1)
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['products', { category, productType, minPrice, maxPrice, search }],
-    queryFn: () => api.products.list({ 
+    queryKey: ['products', { category, productType, minPrice, maxPrice, search, page }],
+    queryFn: () => api.products.list({
       category: category || undefined,
       product_type: productType || undefined,
       min_price: minPrice ? parseFloat(minPrice) : undefined,
       max_price: maxPrice ? parseFloat(maxPrice) : undefined,
-      search: search || undefined 
+      search: search || undefined,
+      skip: (page - 1) * PAGE_SIZE,
+      limit: PAGE_SIZE,
     }),
-    refetchInterval: 3000,
+    staleTime: 60_000,
   })
   
   const handleSearch = (e: React.FormEvent) => {
@@ -78,6 +82,7 @@ export default function ProductsPage() {
     setMaxPrice('')
     setSearch('')
     setSearchInput('')
+    setPage(1)
   }
   
   const hasActiveFilters = category || productType || minPrice || maxPrice || search
@@ -144,6 +149,14 @@ export default function ProductsPage() {
             )}
           </button>
           
+          <button
+            onClick={() => window.open('/api/products/export', '_blank')}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 transition-colors"
+          >
+            <Download className="w-5 h-5" />
+            Export CSV
+          </button>
+
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
@@ -163,6 +176,7 @@ export default function ProductsPage() {
                 onChange={(e) => {
                   setCategory(e.target.value)
                   setProductType('')
+                  setPage(1)
                 }}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
               >
@@ -176,7 +190,7 @@ export default function ProductsPage() {
               <label className="block text-sm font-medium text-gray-400 mb-1">Material Type</label>
               <select
                 value={productType}
-                onChange={(e) => setProductType(e.target.value)}
+                onChange={(e) => { setProductType(e.target.value); setPage(1) }}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
               >
                 <option value="">All Types</option>
@@ -191,7 +205,7 @@ export default function ProductsPage() {
               <input
                 type="number"
                 value={minPrice}
-                onChange={(e) => setMinPrice(e.target.value)}
+                onChange={(e) => { setMinPrice(e.target.value); setPage(1) }}
                 placeholder="0"
                 min="0"
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100 placeholder-gray-500"
@@ -203,7 +217,7 @@ export default function ProductsPage() {
               <input
                 type="number"
                 value={maxPrice}
-                onChange={(e) => setMaxPrice(e.target.value)}
+                onChange={(e) => { setMaxPrice(e.target.value); setPage(1) }}
                 placeholder="No limit"
                 min="0"
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100 placeholder-gray-500"
@@ -286,7 +300,13 @@ export default function ProductsPage() {
                     <StockBadge inStock={product.latest_price.in_stock} />
                   )}
                 </div>
-                
+
+                {product.price_per_kg != null && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: product.latest_price?.currency || 'USD' }).format(product.price_per_kg)}/kg
+                  </div>
+                )}
+
                 <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between text-xs text-gray-500">
                   <span>
                     Updated {formatDistanceToNow(new Date(product.updated_at), { addSuffix: true })}
@@ -298,6 +318,32 @@ export default function ProductsPage() {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {data && data.total > PAGE_SIZE && (
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-gray-400">
+            Page {page} of {Math.ceil(data.total / PAGE_SIZE)}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Prev
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(Math.ceil(data.total / PAGE_SIZE), p + 1))}
+              disabled={page >= Math.ceil(data.total / PAGE_SIZE)}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg border border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>

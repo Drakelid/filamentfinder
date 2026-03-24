@@ -209,8 +209,14 @@ export default function ProductDetailPage() {
                 <div className="text-3xl font-bold text-gray-100">
                   {formatPrice(product.latest_price.price_amount, product.latest_price.currency)}
                 </div>
-                
-                {product.latest_price.list_price_amount && 
+
+                {product.price_per_kg != null && (
+                  <div className="text-sm text-gray-400 mt-1">
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: product.latest_price.currency || 'USD' }).format(product.price_per_kg)}/kg
+                  </div>
+                )}
+
+                {product.latest_price.list_price_amount &&
                  product.latest_price.list_price_amount !== product.latest_price.price_amount && (
                   <div className="text-lg text-gray-500 line-through mt-1">
                     {formatPrice(product.latest_price.list_price_amount, product.latest_price.currency)}

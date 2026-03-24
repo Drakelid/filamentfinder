@@ -41,6 +41,7 @@ class ProductResponse(BaseModel):
     updated_at: datetime
     last_seen_at: Optional[datetime]
     latest_price: Optional[LatestPriceResponse] = None
+    price_per_kg: Optional[float] = None
 
     class Config:
         from_attributes = True

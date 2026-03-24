@@ -139,6 +139,17 @@ function filterProductsByWeight(products: ComparisonProduct[], weightFilter: str
   return products.filter((product) => matchesWeightFilter(product, weightFilter))
 }
 
+function getPricePerKg(price: number | null, weightGrams: number | null, currency: string | null | undefined): string | null {
+  if (price === null || weightGrams === null || weightGrams === 0) return null
+  const perKg = price / (weightGrams / 1000)
+  const curr = currency || 'NOK'
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: curr, maximumFractionDigits: 0 }).format(perKg) + '/kg'
+  } catch {
+    return `${curr} ${perKg.toFixed(0)}/kg`
+  }
+}
+
 function getDeliveredPrice(latest: ComparisonLatestPrice | null | undefined, extraFee = 0): number | null {
   if (!latest) return null
   if (latest.total_amount !== null && latest.total_amount !== undefined) {
@@ -448,6 +459,7 @@ function ComparisonGroup({
                 <th className="text-left px-4 py-2 text-xs font-medium text-gray-400">Store</th>
                 <th className="text-left px-4 py-2 text-xs font-medium text-gray-400">Product</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-gray-400">Price</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-gray-400">Price/kg</th>
                 <th className="text-center px-4 py-2 text-xs font-medium text-gray-400">Stock</th>
                 <th className="text-right px-4 py-2 text-xs font-medium text-gray-400">Actions</th>
               </tr>
@@ -476,6 +488,9 @@ function ComparisonGroup({
                       <div className="text-xs text-green-500">Lowest</div>
                     )}
                   </td>
+                    <td className="px-4 py-2 text-right text-xs text-gray-400">
+                      {getPricePerKg(breakdown.total, getProductWeight(product)?.grams ?? null, breakdown.currency)}
+                    </td>
                     <td className="px-4 py-2 text-center">
                     {product.latest_price?.in_stock === true && (
                       <span className="text-green-400 text-xs">In Stock</span>
@@ -1315,7 +1330,14 @@ export default function PriceChangesPage() {
                                                         <div className="text-xs text-slate-400">{formatWeightBucketLabel(bucket)}</div>
                                                       </div>
                                                       <div className="flex items-center justify-between text-sm">
-                                                        <div className="text-slate-400">{formatPriceNum(brandMin, 'NOK')} - {formatPriceNum(brandMax, 'NOK')}</div>
+                                                        <div className="text-slate-400">
+                                                          {formatPriceNum(brandMin, 'NOK')} - {formatPriceNum(brandMax, 'NOK')}
+                                                          {bucket.grams && brandMin !== null && (
+                                                            <span className="text-slate-500 ml-1">
+                                                              ({getPricePerKg(brandMin, bucket.grams, lowestBreakdown.currency)})
+                                                            </span>
+                                                          )}
+                                                        </div>
                                                         {lowestProduct?.latest_price?.observed_at && (
                                                           <div className="text-slate-500 text-xs">
                                                             {formatDistanceToNow(new Date(lowestProduct.latest_price.observed_at), { addSuffix: true })}

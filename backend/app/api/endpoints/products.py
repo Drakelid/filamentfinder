@@ -1,11 +1,15 @@
+import csv
+import io
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, case, or_, func
 
 from app.core.database import get_db
+from app.utils.weight import extract_weight_grams
 from app.models import Product, PriceObservation, PriceChange, Source
 from app.materials import (
     detect_material, 
@@ -147,8 +151,15 @@ def list_products(
             last_seen_at=p.last_seen_at,
             latest_price=get_latest_price(p),
         )
+        price_per_kg = None
+        if p.category == 'filament':
+            weight_g = extract_weight_grams(f"{p.name} {p.variant or ''} {p.size or ''}")
+            lp = get_latest_price(p)
+            if weight_g is not None and lp is not None and lp.price_amount is not None:
+                price_per_kg = float(lp.price_amount) / (weight_g / 1000)
+        item.price_per_kg = price_per_kg
         items.append(item)
-    
+
     return ProductListResponse(items=items, total=total)
 
 
@@ -247,6 +258,103 @@ async def get_materials(
     }
 
 
+@router.get("/export")
+def export_products(
+    category: Optional[str] = None,
+    product_type: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    search: Optional[str] = None,
+    source_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """Export matching products as a CSV file."""
+    query = db.query(Product).options(
+        joinedload(Product.price_observations),
+        joinedload(Product.source),
+    )
+
+    if category:
+        query = query.filter(Product.category == category.lower())
+    if product_type:
+        query = query.filter(Product.product_type == product_type.lower())
+    if search:
+        query = query.filter(Product.name.ilike(f"%{search}%"))
+    if source_id:
+        query = query.filter(Product.source_id == source_id)
+
+    if min_price is not None or max_price is not None:
+        latest_prices = db.query(
+            PriceObservation.product_id,
+            func.max(PriceObservation.observed_at).label('max_observed')
+        ).group_by(PriceObservation.product_id).subquery()
+
+        price_filter_query = db.query(PriceObservation.product_id).join(
+            latest_prices,
+            (PriceObservation.product_id == latest_prices.c.product_id) &
+            (PriceObservation.observed_at == latest_prices.c.max_observed)
+        )
+        delivered_price = _delivered_price_expr()
+        if min_price is not None:
+            price_filter_query = price_filter_query.filter(delivered_price >= min_price)
+        if max_price is not None:
+            price_filter_query = price_filter_query.filter(delivered_price <= max_price)
+        product_ids = [r[0] for r in price_filter_query.all()]
+        query = query.filter(Product.id.in_(product_ids))
+
+    products = query.order_by(desc(Product.updated_at)).limit(10_000).all()
+
+    def generate():
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            'id', 'name', 'brand', 'category', 'product_type', 'size',
+            'price', 'currency', 'list_price', 'shipping', 'delivered_price',
+            'price_per_kg', 'in_stock', 'source_name', 'source_domain',
+            'url', 'last_seen_at',
+        ])
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate()
+
+        for p in products:
+            lp = get_latest_price(p)
+            ppkg = None
+            if p.category == 'filament':
+                wg = extract_weight_grams(f"{p.name} {p.variant or ''} {p.size or ''}")
+                if wg is not None and lp is not None and lp.price_amount is not None:
+                    ppkg = round(float(lp.price_amount) / (wg / 1000), 2)
+
+            writer.writerow([
+                p.id,
+                p.name,
+                p.brand or '',
+                p.category,
+                p.product_type or '',
+                p.size or '',
+                str(lp.price_amount) if lp and lp.price_amount is not None else '',
+                lp.currency or '' if lp else '',
+                str(lp.list_price_amount) if lp and lp.list_price_amount is not None else '',
+                str(lp.shipping_amount) if lp and lp.shipping_amount is not None else '',
+                str(lp.total_price_amount) if lp and lp.total_price_amount is not None else '',
+                str(ppkg) if ppkg is not None else '',
+                str(lp.in_stock) if lp and lp.in_stock is not None else '',
+                p.source.name if p.source else '',
+                p.source.domain if p.source else '',
+                p.canonical_url,
+                p.last_seen_at.isoformat() if p.last_seen_at else '',
+            ])
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="filamentfinder-export.csv"'},
+    )
+
+
 @router.get("/{product_id}", response_model=ProductDetailResponse)
 def get_product(product_id: int, db: Session = Depends(get_db)):
     product = (
@@ -257,7 +365,14 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     )
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
+    _price_per_kg = None
+    if product.category == 'filament':
+        _weight_g = extract_weight_grams(f"{product.name} {product.variant or ''} {product.size or ''}")
+        _lp = get_latest_price(product)
+        if _weight_g is not None and _lp is not None and _lp.price_amount is not None:
+            _price_per_kg = float(_lp.price_amount) / (_weight_g / 1000)
+
     return ProductDetailResponse(
         id=product.id,
         source_id=product.source_id,
@@ -281,6 +396,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         source_name=product.source.name if product.source else None,
         source_domain=product.source.domain if product.source else "",
         canonical_product_id=product.canonical_product_id,
+        price_per_kg=_price_per_kg,
     )
 
 
