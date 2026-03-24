@@ -6,7 +6,7 @@ All traffic from the worker is automatically routed through the VPN - no SOCKS5 
 To configure Mullvad VPN:
 1. Log in to your Mullvad account at https://mullvad.net/en/account/#/wireguard-config
 2. Generate a WireGuard key or use an existing one
-3. Set MULLVAD_WIREGUARD_PRIVATE_KEY and MULLVAD_WIREGUARD_ADDRESS in .env
+3. Set MULLVAD_WIREGUARD_PRIVATE_KEY and MULLVAD_WIREGUARD_ADDRESSES in .env
 4. Restart the containers with: docker compose up -d
 
 The VPN automatically connects to Nordic servers (Norway, Sweden, Denmark, Finland).

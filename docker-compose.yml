@@ -64,9 +64,10 @@ services:
       - /dev/net/tun:/dev/net/tun
     environment:
       - VPN_SERVICE_PROVIDER=mullvad
-      - VPN_TYPE=openvpn
-      - OPENVPN_USER=${MULLVAD_ACCOUNT_NUMBER:-}
-      - SERVER_COUNTRIES=Sweden
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${MULLVAD_WIREGUARD_PRIVATE_KEY:-}
+      - WIREGUARD_ADDRESSES=${MULLVAD_WIREGUARD_ADDRESSES:-}
+      - SERVER_COUNTRIES=${MULLVAD_SERVER_COUNTRIES:-Sweden}
       - FIREWALL_OUTBOUND_SUBNETS=172.16.0.0/12
       - UPDATER_PERIOD=0
       - UPDATER_VPN_SERVICE_PROVIDERS=mullvad
