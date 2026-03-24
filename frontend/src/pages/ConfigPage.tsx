@@ -44,8 +44,8 @@ export default function ConfigPage() {
         rotate_interval_minutes: rotateInterval,
       }
 
-      if (accountNumber) {
-        payload.account_number = accountNumber
+      if (accountNumber.trim()) {
+        payload.account_number = accountNumber.trim()
       }
 
       return api.config.updateVpn(payload)
@@ -95,7 +95,17 @@ export default function ConfigPage() {
       ? vpnConfigQuery.error.message
       : 'Failed to load VPN configuration'
     : null
-  const configReady = !!vpnConfigQuery.data
+
+  const configReady = !vpnConfigQuery.isLoading
+  const displayedConfig: VPNConfig = vpnConfig ?? {
+    account_number_set: false,
+    enabled,
+    auto_rotate: autoRotate,
+    rotate_interval_minutes: rotateInterval,
+    connected: false,
+    current_server: null,
+    current_ip: null,
+  }
 
   if (vpnConfigQuery.isLoading) {
     return (
@@ -142,7 +152,7 @@ export default function ConfigPage() {
         <div className="flex items-center gap-3 mb-6">
           <Shield className="w-6 h-6 text-purple-500" />
           <h2 className="text-xl font-semibold text-gray-100">Mullvad VPN</h2>
-          {vpnConfig?.connected && (
+          {displayedConfig.connected && (
             <span className="px-2 py-1 text-xs font-medium bg-green-900/50 text-green-400 rounded-full">
               Connected
             </span>
@@ -159,7 +169,7 @@ export default function ConfigPage() {
                 type={showAccountNumber ? 'text' : 'password'}
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
-                placeholder={vpnConfig?.account_number_set ? '••••••••••••••••' : 'Enter your Mullvad account number'}
+                placeholder={displayedConfig.account_number_set ? '***************' : 'Enter your Mullvad account number'}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
                 disabled={!configReady}
               />
@@ -178,7 +188,7 @@ export default function ConfigPage() {
                 mullvad.net
               </a>
             </p>
-            {vpnConfig?.account_number_set && (
+            {displayedConfig.account_number_set && (
               <p className="mt-1 text-sm text-green-500">
                 Account number is configured
               </p>
@@ -242,7 +252,7 @@ export default function ConfigPage() {
             <input
               type="number"
               value={rotateInterval}
-              onChange={(e) => setRotateInterval(parseInt(e.target.value) || 30)}
+              onChange={(e) => setRotateInterval(parseInt(e.target.value, 10) || 30)}
               min={5}
               max={1440}
               disabled={!enabled || !autoRotate || !configReady}
@@ -255,41 +265,39 @@ export default function ConfigPage() {
             </p>
           </div>
 
-          {vpnConfig && (
-            <div className="bg-gray-700/50 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-300 mb-2">Current Status</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Connection:</span>{' '}
-                  <span className={vpnConfig.connected ? 'text-green-400' : 'text-yellow-400'}>
-                    {vpnConfig.connected ? 'Connected' : (vpnConfig.enabled ? 'Not Configured' : 'Disabled')}
-                  </span>
-                </div>
-                {vpnConfig.current_server && (
-                  <div>
-                    <span className="text-gray-500">Server:</span>{' '}
-                    <span className="text-gray-300">{vpnConfig.current_server}</span>
-                  </div>
-                )}
-                {vpnConfig.current_ip && (
-                  <div>
-                    <span className="text-gray-500">IP:</span>{' '}
-                    <span className="text-gray-300">{vpnConfig.current_ip}</span>
-                  </div>
-                )}
+          <div className="bg-gray-700/50 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-300 mb-2">Current Status</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">Connection:</span>{' '}
+                <span className={displayedConfig.connected ? 'text-green-400' : 'text-yellow-400'}>
+                  {displayedConfig.connected ? 'Connected' : (enabled ? 'Not Configured' : 'Disabled')}
+                </span>
               </div>
-              {!vpnConfig.connected && (
-                <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-sm text-yellow-300">
-                  <p className="font-medium">VPN requires Mullvad account configuration:</p>
-                  <ol className="list-decimal list-inside mt-1 text-yellow-400 space-y-1">
-                    <li>Add your 16-digit Mullvad account number to <code className="bg-gray-800 px-1 rounded">.env</code></li>
-                    <li>Set <code className="bg-gray-800 px-1 rounded">MULLVAD_ACCOUNT_NUMBER=1234567890123456</code></li>
-                    <li>Restart containers: <code className="bg-gray-800 px-1 rounded">docker compose up -d</code></li>
-                  </ol>
+              {displayedConfig.current_server && (
+                <div>
+                  <span className="text-gray-500">Server:</span>{' '}
+                  <span className="text-gray-300">{displayedConfig.current_server}</span>
+                </div>
+              )}
+              {displayedConfig.current_ip && (
+                <div>
+                  <span className="text-gray-500">IP:</span>{' '}
+                  <span className="text-gray-300">{displayedConfig.current_ip}</span>
                 </div>
               )}
             </div>
-          )}
+            {!displayedConfig.connected && (
+              <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-sm text-yellow-300">
+                <p className="font-medium">VPN requires Mullvad account configuration:</p>
+                <ol className="list-decimal list-inside mt-1 text-yellow-400 space-y-1">
+                  <li>Add your 16-digit Mullvad account number to <code className="bg-gray-800 px-1 rounded">.env</code></li>
+                  <li>Set <code className="bg-gray-800 px-1 rounded">MULLVAD_ACCOUNT_NUMBER=1234567890123456</code></li>
+                  <li>Restart containers: <code className="bg-gray-800 px-1 rounded">docker compose up -d</code></li>
+                </ol>
+              </div>
+            )}
+          </div>
 
           {testResult && (
             <div className={`rounded-lg p-4 ${testResult.account_valid ? 'bg-green-900/30 border border-green-700' : 'bg-red-900/30 border border-red-700'}`}>
@@ -329,7 +337,7 @@ export default function ConfigPage() {
             </button>
             <button
               onClick={() => testMutation.mutate()}
-              disabled={testing || !vpnConfig?.account_number_set || !configReady}
+              disabled={testing || (!displayedConfig.account_number_set && !accountNumber.trim()) || !configReady}
               className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {testing ? (

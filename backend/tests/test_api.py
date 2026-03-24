@@ -350,3 +350,21 @@ class TestStatsAPI:
         data = response.json()
         assert data["migrations"]["pending"] == 0
         assert data["migrations"]["current_revision"] is None
+
+
+class TestConfigAPI:
+    def test_get_vpn_config_returns_defaults(self, client, monkeypatch):
+        monkeypatch.delenv("MULLVAD_ACCOUNT_NUMBER", raising=False)
+
+        response = client.get("/api/config/vpn")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "account_number_set": False,
+            "enabled": False,
+            "auto_rotate": True,
+            "rotate_interval_minutes": 30,
+            "connected": False,
+            "current_server": None,
+            "current_ip": None,
+        }
