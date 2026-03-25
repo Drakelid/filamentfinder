@@ -113,18 +113,41 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    expose:
+      - "3030"
     environment:
       - VITE_API_URL=http://backend:8000
       - VITE_ADMIN_API_KEY=${ADMIN_API_KEY:-}
+    command: npm run dev -- --host 0.0.0.0 --port 3030 --strictPort
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    networks:
+      - default
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.filamentfinder-http.rule=Host(`fredrikdrakelid.asuscomm.com`) && PathPrefix(`/filamentfinder`)
+      - traefik.http.routers.filamentfinder-http.entrypoints=web
+      - traefik.http.routers.filamentfinder-http.middlewares=filamentfinder-https-redirect
+      - traefik.http.middlewares.filamentfinder-https-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.filamentfinder-https-redirect.redirectscheme.permanent=true
+      - traefik.http.routers.filamentfinder-https.rule=Host(`fredrikdrakelid.asuscomm.com`) && PathPrefix(`/filamentfinder`)
+      - traefik.http.routers.filamentfinder-https.entrypoints=websecure
+      - traefik.http.routers.filamentfinder-https.tls=true
+      - traefik.http.routers.filamentfinder-https.tls.certresolver=le
+      - traefik.http.routers.filamentfinder-https.middlewares=filamentfinder-strip-prefix
+      - traefik.http.middlewares.filamentfinder-strip-prefix.stripprefix.prefixes=/filamentfinder
+      - traefik.http.services.filamentfinder.loadbalancer.server.port=3030
 
 volumes:
   postgres_data:
   redis_data:
   mullvad_data:
+
+networks:
+  proxy:
+    external: true
