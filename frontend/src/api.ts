@@ -1,4 +1,4 @@
-const API_BASE = '/api'
+const API_BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/api`
 const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY?.trim()
 
 export interface CrawlRules {

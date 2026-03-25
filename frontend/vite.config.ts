@@ -2,7 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+const base = process.env.VITE_BASE || '/'
+
 export default defineConfig({
+  base,
   plugins: [react()],
   resolve: {
     alias: {
@@ -10,7 +13,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 3030,
     host: true,
     allowedHosts: ['fredrikdrakelid.asuscomm.com'],
     proxy: {

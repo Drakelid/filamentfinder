@@ -9,6 +9,10 @@ import ConfigPage from './pages/ConfigPage'
 import StatsPage from './pages/StatsPage'
 import ShippingPage from './pages/ShippingPage'
 
+const routerBase = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL.slice(0, -1)
+  : import.meta.env.BASE_URL
+
 function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   const location = useLocation()
   const isActive = location.pathname === to || location.pathname.startsWith(to + '/')
@@ -85,7 +89,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <Layout>
         <Routes>
           <Route path="/" element={<SourcesPage />} />
