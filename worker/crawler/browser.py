@@ -17,6 +17,19 @@ JS_RENDERED_DOMAINS = {
     'polyalkemi.no',  # WooCommerce with JS-loaded content
 }
 
+DOMAIN_READY_SELECTORS = {
+    'elefun.no': [
+        '.category_prod',
+        '.category_prod_name',
+        'a[href*="/vare-"]',
+    ],
+    '3dnet.no': [
+        '.thumbnail[itemtype*="Product"]',
+        '.product-wrap',
+        'script[type="application/ld+json"]',
+    ],
+}
+
 
 def requires_browser(url: str) -> bool:
     """Check if URL requires browser rendering."""
@@ -52,8 +65,8 @@ async def fetch_with_browser(url: str, timeout: int = 30) -> Tuple[str, Dict[str
                 '--disable-setuid-sandbox',
                 '--disable-infobars',
                 '--window-position=0,0',
-                '--ignore-certifcate-errors',
-                '--ignore-certifcate-errors-spki-list',
+                '--ignore-certificate-errors',
+                '--ignore-certificate-errors-spki-list',
             ]
         )
         try:
@@ -108,8 +121,13 @@ async def fetch_with_browser(url: str, timeout: int = 30) -> Tuple[str, Dict[str
                 random.randint(100, 400)
             )
             
-            # Navigate and wait for network to be idle
-            response = await page.goto(url, wait_until="networkidle", timeout=timeout * 1000)
+            # DOMContentLoaded is more reliable than networkidle on pages with long-lived analytics calls.
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+
+            try:
+                await page.wait_for_load_state("networkidle", timeout=min(timeout * 1000 // 2, 10000))
+            except Exception:
+                logger.debug("Network idle wait skipped", url=url, domain=domain)
             
             # Wait a random amount of time to appear more human-like
             await asyncio.sleep(random.uniform(1.5, 3.5))
@@ -128,6 +146,15 @@ async def fetch_with_browser(url: str, timeout: int = 30) -> Tuple[str, Dict[str
             
             # Wait for any lazy-loaded content
             await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            ready_selectors = DOMAIN_READY_SELECTORS.get(domain, [])
+            for selector in ready_selectors:
+                try:
+                    await page.wait_for_selector(selector, state="attached", timeout=5000)
+                    logger.info("Browser content selector matched", url=url, domain=domain, selector=selector)
+                    break
+                except Exception:
+                    continue
             
             html = await page.content()
             
