@@ -188,6 +188,184 @@ class BaseParser(ABC):
         
         return None
 
+    def _normalize_text(self, value: Any) -> str:
+        """Normalize text for case-insensitive keyword checks."""
+        if value is None:
+            return ""
+        return " ".join(str(value).strip().lower().split())
+
+    def _interpret_stock_value(self, value: Any) -> Optional[bool]:
+        """Interpret an explicit stock value from text, numbers, or booleans."""
+        if value is None:
+            return None
+
+        if isinstance(value, bool):
+            return value
+
+        if isinstance(value, (int, float)):
+            return value > 0
+
+        normalized = self._normalize_text(value)
+        if not normalized:
+            return None
+
+        true_values = {
+            "1",
+            "true",
+            "yes",
+            "y",
+            "available",
+            "availability: instock",
+            "instock",
+            "in stock",
+        }
+        false_values = {
+            "0",
+            "false",
+            "no",
+            "n",
+            "unavailable",
+            "availability: outofstock",
+            "outofstock",
+            "out of stock",
+            "sold out",
+        }
+
+        if normalized in true_values:
+            return True
+        if normalized in false_values:
+            return False
+
+        if "schema.org/instock" in normalized:
+            return True
+        if "schema.org/outofstock" in normalized:
+            return False
+
+        return None
+
+    def _detect_stock_from_text(self, text: Optional[str]) -> Optional[bool]:
+        """Detect stock state from free-form text."""
+        import re
+
+        normalized = self._normalize_text(text)
+        if not normalized:
+            return None
+
+        explicit = self._interpret_stock_value(normalized)
+        if explicit is not None:
+            return explicit
+
+        false_keywords = [
+            self._normalize_text(keyword)
+            for keyword in getattr(self, "STOCK_FALSE_KEYWORDS", [])
+            if keyword
+        ]
+        true_keywords = [
+            self._normalize_text(keyword)
+            for keyword in getattr(self, "STOCK_TRUE_KEYWORDS", [])
+            if keyword
+        ]
+
+        for keyword in false_keywords:
+            if keyword and keyword in normalized:
+                return False
+
+        for keyword in true_keywords:
+            if keyword and keyword in normalized:
+                return True
+
+        if re.search(r"\b\d+\s*(?:stk\.?\s*)?(?:pa|på)\s+lager\b", normalized):
+            return True
+        if re.search(r"\b\d+\s+in stock\b", normalized):
+            return True
+
+        return None
+
+    def _detect_stock_from_element(self, elem: Any) -> Optional[bool]:
+        """Detect stock state from an HTML element and its attributes."""
+        if elem is None:
+            return None
+
+        class_names = elem.get("class", []) if hasattr(elem, "get") else []
+        if not isinstance(class_names, list):
+            class_names = [class_names]
+
+        false_classes = {
+            self._normalize_text(keyword)
+            for keyword in getattr(self, "STOCK_FALSE_CLASSES", [])
+            if keyword
+        }
+        true_classes = {
+            self._normalize_text(keyword)
+            for keyword in getattr(self, "STOCK_TRUE_CLASSES", [])
+            if keyword
+        }
+
+        for class_name in class_names:
+            normalized_class = self._normalize_text(class_name)
+            if any(keyword and keyword in normalized_class for keyword in false_classes):
+                return False
+            if any(keyword and keyword in normalized_class for keyword in true_classes):
+                return True
+
+        for attr_key in getattr(self, "STOCK_ATTR_KEYS", []):
+            if not hasattr(elem, "get"):
+                continue
+            attr_value = elem.get(attr_key)
+            explicit = self._interpret_stock_value(attr_value)
+            if explicit is not None:
+                return explicit
+            detected = self._detect_stock_from_text(attr_value)
+            if detected is not None:
+                return detected
+
+        text = elem.get_text(" ", strip=True) if hasattr(elem, "get_text") else str(elem)
+        return self._detect_stock_from_text(text)
+
+    def _detect_stock_status(self, soup: BeautifulSoup) -> Optional[bool]:
+        """Detect stock state from a full product page."""
+        availability_elem = soup.select_one(
+            'link[itemprop="availability"], meta[itemprop="availability"], [itemprop="availability"]'
+        )
+        if availability_elem:
+            availability_value = (
+                availability_elem.get("href")
+                or availability_elem.get("content")
+                or availability_elem.get_text(" ", strip=True)
+            )
+            explicit = self._interpret_stock_value(availability_value)
+            if explicit is not None:
+                return explicit
+            detected = self._detect_stock_from_text(availability_value)
+            if detected is not None:
+                return detected
+
+        stock_selectors = [
+            ".stock",
+            ".product-stock",
+            ".availability",
+            ".in-stock",
+            ".out-of-stock",
+            '[class*="stock"]',
+            '[class*="avail"]',
+            '[data-stock]',
+            '[data-stock-status]',
+            '[data-availability]',
+        ]
+        for selector in stock_selectors:
+            for elem in soup.select(selector):
+                detected = self._detect_stock_from_element(elem)
+                if detected is not None:
+                    return detected
+
+        body = soup.body
+        if body:
+            detected = self._detect_stock_from_element(body)
+            if detected is not None:
+                return detected
+
+        return None
+
     def set_selector_overrides(self, overrides: Optional[Dict[str, str]]) -> None:
         """Apply per-source selector overrides (if any)."""
         self.selector_overrides = overrides or {}

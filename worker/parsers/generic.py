@@ -18,6 +18,8 @@ class GenericParser(BaseParser):
     PRICE_SELECTORS = [
         '[itemprop="price"]',
         '[data-price]',
+        '.prod_price_current',
+        '.category_prod_price',
         '.price',
         '.product-price',
         '.current-price',
@@ -693,6 +695,7 @@ class GenericParser(BaseParser):
         product_url_patterns = [
             r'/product[s]?/',
             r'/p/',
+            r'/p/prod\.aspx\?v=\d+',
             r'/item/',
             r'/dp/',
             r'/pd/',

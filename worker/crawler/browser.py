@@ -23,6 +23,11 @@ DOMAIN_READY_SELECTORS = {
         '.category_prod_name',
         'a[href*="/vare-"]',
     ],
+    'polyalkemi.no': [
+        'a[href*="/add-north/"]',
+        '[class*="price"]',
+        'h1',
+    ],
     '3dnet.no': [
         '.thumbnail[itemtype*="Product"]',
         '.product-wrap',

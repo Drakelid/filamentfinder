@@ -591,38 +591,44 @@ class Crawler:
         discovered_urls = []
         
         is_product = self._is_product_page(url, html)
-        
-        if is_product:
-            logger.info("Detected as product page", url=url)
-            product = parser.parse_product(html, url)
-            if product:
-                logger.info("Parsed product", name=product.name[:80] if product.name else None, price=float(product.price) if product.price else None)
-                await self._process_product(product, parser.name, page_url=url)
-            else:
-                logger.info("No product parsed from page", url=url)
-        else:
-            logger.info("Detected as listing page", url=url)
-            products = parser.parse_product_list(html, url)
-            logger.info("Parsed products from listing", count=len(products), sample_names=[p.name[:50] for p in products[:3]] if products else [])
-            for product in products:
-                saved = await self._process_product(product, parser.name, page_url=url)
-                if saved:
-                    logger.info("Product saved to database", name=product.name[:50] if product.name else None)
-            
-            product_links = parser.extract_product_links(html, url)
-            logger.info("Extracted product links", count=len(product_links), sample=product_links[:3] if product_links else [])
-            for link in product_links:
-                if self._should_crawl_url(link):
-                    discovered_urls.append(link)
+
+        try:
+            if is_product:
+                logger.info("Detected as product page", url=url)
+                product = parser.parse_product(html, url)
+                if product:
+                    logger.info("Parsed product", name=product.name[:80] if product.name else None, price=float(product.price) if product.price else None)
+                    await self._process_product(product, parser.name, page_url=url)
                 else:
-                    logger.debug("Link filtered by crawl rules", link=link)
-            
-            if depth < self.source.crawl_rules.get('max_depth', 3):
-                pagination_links = parser.extract_pagination_links(html, url)
-                logger.info("Extracted pagination links", count=len(pagination_links))
-                for link in pagination_links:
+                    logger.info("No product parsed from page", url=url)
+            else:
+                logger.info("Detected as listing page", url=url)
+                products = parser.parse_product_list(html, url)
+                logger.info("Parsed products from listing", count=len(products), sample_names=[p.name[:50] for p in products[:3]] if products else [])
+                for product in products:
+                    saved = await self._process_product(product, parser.name, page_url=url)
+                    if saved:
+                        logger.info("Product saved to database", name=product.name[:50] if product.name else None)
+
+                product_links = parser.extract_product_links(html, url)
+                logger.info("Extracted product links", count=len(product_links), sample=product_links[:3] if product_links else [])
+                for link in product_links:
                     if self._should_crawl_url(link):
                         discovered_urls.append(link)
+                    else:
+                        logger.debug("Link filtered by crawl rules", link=link)
+
+                if depth < self.source.crawl_rules.get('max_depth', 3):
+                    pagination_links = parser.extract_pagination_links(html, url)
+                    logger.info("Extracted pagination links", count=len(pagination_links))
+                    for link in pagination_links:
+                        if self._should_crawl_url(link):
+                            discovered_urls.append(link)
+        except Exception as e:
+            self.stats.errors += 1
+            self.stats.error_messages.append(f"Failed to parse {url}: {str(e)}")
+            logger.error("Failed to parse page", url=url, parser=parser.name, error=str(e))
+            return []
         
         logger.info("Discovered URLs to crawl", count=len(discovered_urls), sample=discovered_urls[:5] if discovered_urls else [])
         return discovered_urls

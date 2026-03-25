@@ -226,6 +226,7 @@ class TestGenericParser:
         assert product.name == "ABS Filament 1kg Black"
         assert product.price == Decimal("34.99")
         assert product.sku == "ABS-BLK-1KG"
+        assert product.in_stock == True
     
     def test_parse_product_with_classes(self, parser):
         html = '''
@@ -242,6 +243,23 @@ class TestGenericParser:
         assert product.name == "TPU Flexible Filament"
         assert product.price == Decimal("19.99")
         assert product.currency == "EUR"
+
+    def test_parse_product_detects_stock_text(self, parser):
+        html = '''
+        <html>
+        <body class="in-stock">
+            <h1 class="product-title">PLA Filament Red</h1>
+            <div class="prod_price_current">kr 279,-</div>
+            <div class="product-stock">16 pa lager</div>
+        </body>
+        </html>
+        '''
+        product = parser.parse_product(html, "https://example.no/p/prod.aspx?v=12345")
+
+        assert product is not None
+        assert product.price == Decimal("279")
+        assert product.currency == "NOK"
+        assert product.in_stock == True
     
     def test_extract_product_links(self, parser):
         html = '''
