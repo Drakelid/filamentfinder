@@ -50,6 +50,24 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.filamentfinder-api-http.rule=Host(`fredrikdrakelid.asuscomm.com`) && PathPrefix(`/filamentfinder/api`)
+      - traefik.http.routers.filamentfinder-api-http.entrypoints=web
+      - traefik.http.routers.filamentfinder-api-http.priority=200
+      - traefik.http.routers.filamentfinder-api-http.middlewares=filamentfinder-https-redirect
+      - traefik.http.routers.filamentfinder-api-https.rule=Host(`fredrikdrakelid.asuscomm.com`) && PathPrefix(`/filamentfinder/api`)
+      - traefik.http.routers.filamentfinder-api-https.entrypoints=websecure
+      - traefik.http.routers.filamentfinder-api-https.priority=200
+      - traefik.http.routers.filamentfinder-api-https.tls=true
+      - traefik.http.routers.filamentfinder-api-https.tls.certresolver=le
+      - traefik.http.routers.filamentfinder-api-https.middlewares=filamentfinder-api-strip-prefix
+      - traefik.http.middlewares.filamentfinder-api-strip-prefix.stripprefix.prefixes=/filamentfinder
+      - traefik.http.services.filamentfinder-api.loadbalancer.server.port=8000
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
@@ -81,13 +99,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_BASE: ${VITE_BASE:-/filamentfinder/}
+        VITE_ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     expose:
       - "3030"
-    environment:
-      - VITE_BASE=${VITE_BASE:-/filamentfinder/}
-      - VITE_API_URL=${VITE_API_URL:-http://backend:8000}
-      - VITE_ADMIN_API_KEY=${ADMIN_API_KEY:-}
-    command: npm run dev -- --host 0.0.0.0 --port 3030 --strictPort
     depends_on:
       - backend
     networks:
@@ -98,15 +114,17 @@ services:
       - traefik.docker.network=proxy
       - traefik.http.routers.filamentfinder-http.rule=Host(`fredrikdrakelid.asuscomm.com`) && PathPrefix(`/filamentfinder`)
       - traefik.http.routers.filamentfinder-http.entrypoints=web
+      - traefik.http.routers.filamentfinder-http.priority=100
       - traefik.http.routers.filamentfinder-http.middlewares=filamentfinder-https-redirect
       - traefik.http.middlewares.filamentfinder-https-redirect.redirectscheme.scheme=https
       - traefik.http.middlewares.filamentfinder-https-redirect.redirectscheme.permanent=true
       - traefik.http.routers.filamentfinder-https.rule=Host(`fredrikdrakelid.asuscomm.com`) && PathPrefix(`/filamentfinder`)
       - traefik.http.routers.filamentfinder-https.entrypoints=websecure
+      - traefik.http.routers.filamentfinder-https.priority=100
       - traefik.http.routers.filamentfinder-https.tls=true
       - traefik.http.routers.filamentfinder-https.tls.certresolver=le
-      - traefik.http.routers.filamentfinder-https.middlewares=filamentfinder-strip-prefix
-      - traefik.http.middlewares.filamentfinder-strip-prefix.stripprefix.prefixes=/filamentfinder
+      - traefik.http.routers.filamentfinder-https.middlewares=filamentfinder-frontend-strip-prefix
+      - traefik.http.middlewares.filamentfinder-frontend-strip-prefix.stripprefix.prefixes=/filamentfinder
       - traefik.http.services.filamentfinder.loadbalancer.server.port=3030
 
 volumes:
@@ -114,5 +132,6 @@ volumes:
   redis_data:
 
 networks:
+  default:
   proxy:
     external: true
