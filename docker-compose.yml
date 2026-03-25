@@ -50,8 +50,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
@@ -77,8 +75,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./worker:/app/worker
     command: python -m worker.scheduler
 
   frontend:
@@ -93,9 +89,6 @@ services:
     command: npm run dev -- --host 0.0.0.0 --port 3030 --strictPort
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
 
 volumes:
   postgres_data:
