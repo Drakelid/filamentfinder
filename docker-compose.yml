@@ -55,31 +55,6 @@ services:
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  mullvad:
-    image: ghcr.io/qdm12/gluetun:latest
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    environment:
-      - VPN_SERVICE_PROVIDER=mullvad
-      - VPN_TYPE=wireguard
-      - WIREGUARD_PRIVATE_KEY=${MULLVAD_WIREGUARD_PRIVATE_KEY:-}
-      - WIREGUARD_ADDRESSES=${MULLVAD_WIREGUARD_ADDRESSES:-}
-      - SERVER_COUNTRIES=${MULLVAD_SERVER_COUNTRIES:-Sweden}
-      - FIREWALL_OUTBOUND_SUBNETS=172.16.0.0/12
-      - UPDATER_PERIOD=0
-      - UPDATER_VPN_SERVICE_PROVIDERS=mullvad
-    volumes:
-      - mullvad_data:/gluetun
-    healthcheck:
-      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
   worker:
     build:
       context: ./worker
@@ -95,15 +70,13 @@ services:
       - CRAWLER_RESPECT_ROBOTS_TXT=${CRAWLER_RESPECT_ROBOTS_TXT:-true}
       - SCAN_SCHEDULE_ENABLED=${SCAN_SCHEDULE_ENABLED:-true}
       - SCAN_SCHEDULE_CRON=${SCAN_SCHEDULE_CRON:-0 6 * * *}
+      - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-      mullvad:
-        condition: service_healthy
-    network_mode: "service:mullvad"
     volumes:
       - ./worker:/app/worker
     command: python -m worker.scheduler
@@ -145,7 +118,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  mullvad_data:
 
 networks:
   proxy:
