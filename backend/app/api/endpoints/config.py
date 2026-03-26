@@ -123,6 +123,19 @@ def parse_wireguard_config(config_text: str) -> tuple[str, str]:
 
 
 def normalize_wireguard_config(config_text: str) -> str:
+    def replace_address(match: re.Match[str]) -> str:
+        addresses = [part.strip() for part in match.group(1).split(",") if part.strip()]
+        ipv4_addresses: list[str] = []
+        for address in addresses:
+            interface = ipaddress.ip_interface(address)
+            if interface.version == 4:
+                ipv4_addresses.append(address)
+
+        if not ipv4_addresses:
+            raise HTTPException(status_code=400, detail="WireGuard config must contain at least one IPv4 interface address")
+
+        return f"Address = {', '.join(ipv4_addresses)}"
+
     def replace_endpoint(match: re.Match[str]) -> str:
         prefix, host, suffix = match.groups()
         try:
@@ -138,7 +151,9 @@ def normalize_wireguard_config(config_text: str) -> str:
 
         return f"{prefix}{resolved_ip}{suffix}"
 
-    return WIREGUARD_ENDPOINT_PATTERN.sub(replace_endpoint, config_text)
+    normalized = WIREGUARD_ADDRESS_PATTERN.sub(lambda match: replace_address(match), config_text)
+    normalized = WIREGUARD_ENDPOINT_PATTERN.sub(replace_endpoint, normalized)
+    return normalized
 
 
 def sanitize_wireguard_filename(filename: str) -> str:
