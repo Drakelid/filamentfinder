@@ -147,12 +147,48 @@ def _restart_gluetun_container():
     containers[0].restart(timeout=10)
 
 
+def _get_gluetun_container_ip() -> Optional[str]:
+    try:
+        client = docker.from_env()
+        project_name = None
+        current_container_id = os.environ.get("HOSTNAME")
+        if current_container_id:
+            try:
+                current_container = client.containers.get(current_container_id)
+                project_name = current_container.labels.get("com.docker.compose.project")
+            except Exception:
+                project_name = None
+
+        filters = {"label": ["com.docker.compose.service=gluetun"]}
+        if project_name:
+            filters["label"].append(f"com.docker.compose.project={project_name}")
+
+        containers = client.containers.list(all=True, filters=filters)
+        if not containers:
+            return None
+
+        networks = containers[0].attrs.get("NetworkSettings", {}).get("Networks", {})
+        for network in networks.values():
+            ip_address = network.get("IPAddress")
+            if ip_address:
+                return ip_address
+    except Exception:
+        return None
+    return None
+
+
 def _get_gluetun_proxy_url() -> str:
     proxy_url = (settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")).strip()
     if proxy_url:
         parsed = urlparse(proxy_url)
         if parsed.hostname == "gluetun":
+            gluetun_ip = _get_gluetun_container_ip()
+            if gluetun_ip:
+                return proxy_url.replace("gluetun", gluetun_ip, 1)
             return proxy_url
+    gluetun_ip = _get_gluetun_container_ip()
+    if gluetun_ip:
+        return f"http://{gluetun_ip}:8888"
     return "http://gluetun:8888"
 
 

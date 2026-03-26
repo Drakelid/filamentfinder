@@ -111,7 +111,13 @@ def get_proxy_host(proxy_url: str) -> str | None:
 def get_gluetun_proxy_url() -> str:
     proxy_url = os.environ.get("MULLVAD_SOCKS_PROXY", "").strip()
     if proxy_url and get_proxy_host(proxy_url) == "gluetun":
+        gluetun_ip = get_gluetun_container_ip()
+        if gluetun_ip:
+            return proxy_url.replace("gluetun", gluetun_ip, 1)
         return proxy_url
+    gluetun_ip = get_gluetun_container_ip()
+    if gluetun_ip:
+        return f"http://{gluetun_ip}:8888"
     return "http://gluetun:8888"
 
 
@@ -230,6 +236,60 @@ def restart_gluetun_container() -> str | None:
         return str(exc)
 
 
+def get_gluetun_container():
+    try:
+        client = docker.from_env()
+        project_name = None
+        current_container_id = os.environ.get("HOSTNAME")
+        if current_container_id:
+            try:
+                current_container = client.containers.get(current_container_id)
+                project_name = current_container.labels.get("com.docker.compose.project")
+            except Exception:
+                project_name = None
+
+        filters = {"label": ["com.docker.compose.service=gluetun"]}
+        if project_name:
+            filters["label"].append(f"com.docker.compose.project={project_name}")
+
+        containers = client.containers.list(all=True, filters=filters)
+        if not containers:
+            return None
+        return containers[0]
+    except Exception:
+        return None
+
+
+def get_gluetun_container_ip() -> str | None:
+    container = get_gluetun_container()
+    if not container:
+        return None
+    try:
+        networks = container.attrs.get("NetworkSettings", {}).get("Networks", {})
+        for network in networks.values():
+            ip_address = network.get("IPAddress")
+            if ip_address:
+                return ip_address
+    except Exception:
+        return None
+    return None
+
+
+def get_gluetun_control_base_url() -> str:
+    gluetun_ip = get_gluetun_container_ip()
+    if gluetun_ip:
+        return f"http://{gluetun_ip}:8000"
+    return "http://gluetun:8000"
+
+
+def proxy_targets_gluetun(proxy_url: str) -> bool:
+    proxy_host = get_proxy_host(proxy_url)
+    if proxy_host == "gluetun":
+        return True
+    gluetun_ip = get_gluetun_container_ip()
+    return bool(gluetun_ip and proxy_host == gluetun_ip)
+
+
 def get_wireguard_file_metadata(db: Session) -> tuple[bool, str | None, datetime | None, int, str | None]:
     profiles = load_wireguard_profiles(db)
     if not GLUETUN_WIREGUARD_FILE.exists() and not profiles:
@@ -268,7 +328,7 @@ def get_vpn_config(db: Session = Depends(get_db)):
     wireguard_file_configured, wireguard_file_name, wireguard_uploaded_at, wireguard_profile_count, wireguard_active_file_name = get_wireguard_file_metadata(db)
     proxy_url = get_effective_proxy_url(db)
     proxy_host = get_proxy_host(proxy_url)
-    gluetun_enabled = wireguard_file_configured or proxy_host == "gluetun"
+    gluetun_enabled = wireguard_file_configured or proxy_targets_gluetun(proxy_url)
 
     connected = enabled and (bool(proxy_url) or gluetun_enabled)
     current_server = None
@@ -430,17 +490,18 @@ async def test_vpn_connection(db: Session = Depends(get_db)):
         return response.text.strip()
 
     proxy_url = get_effective_proxy_url(db)
-    gluetun_enabled = get_proxy_host(proxy_url) == "gluetun"
+    gluetun_enabled = proxy_targets_gluetun(proxy_url)
 
     try:
         if gluetun_enabled:
+            control_base_url = get_gluetun_control_base_url()
             try:
                 async with httpx.AsyncClient(timeout=5) as control_client:
                     try:
-                        payload = await fetch_json(control_client, "http://gluetun:8000/v1/publicip/ip")
+                        payload = await fetch_json(control_client, f"{control_base_url}/v1/publicip/ip")
                         public_ip = payload.get("public_ip") or payload.get("ip")
                     except Exception:
-                        public_ip = await fetch_text(control_client, "http://gluetun:8000/ip")
+                        public_ip = await fetch_text(control_client, f"{control_base_url}/ip")
 
                     if public_ip:
                         result["connected"] = True
