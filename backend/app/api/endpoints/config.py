@@ -195,7 +195,7 @@ async def test_vpn_connection(db: Session = Depends(get_db)):
     try:
         client_kwargs = {"timeout": 10}
         if proxy_url:
-            client_kwargs["transport"] = httpx.AsyncHTTPTransport(proxy=proxy_url)
+            client_kwargs["proxy"] = proxy_url
         elif gluetun_enabled:
             client_kwargs["timeout"] = 10
 
@@ -204,15 +204,16 @@ async def test_vpn_connection(db: Session = Depends(get_db)):
                 payload = await fetch_json(client, "https://am.i.mullvad.net/json")
                 result["connected"] = True
                 result["ip"] = payload.get("ip")
-                result["country"] = payload.get("country")
+                result["country"] = payload.get("country") or payload.get("country_code")
                 result["mullvad_exit_ip"] = bool(payload.get("mullvad_exit_ip", False))
                 return VPNStatusResponse(**result)
-            except Exception:
+            except Exception as mullvad_exc:
                 payload = await fetch_json(client, "https://ipinfo.io/json")
                 result["connected"] = True
                 result["ip"] = payload.get("ip")
                 result["country"] = payload.get("country")
                 result["mullvad_exit_ip"] = False
+                result["error"] = f"Mullvad check failed, fallback succeeded: {mullvad_exc}"
                 return VPNStatusResponse(**result)
     except Exception as exc:
         result["error"] = str(exc)
