@@ -71,6 +71,7 @@ class MullvadVPN:
         self._last_rotation: Optional[datetime] = None
         self._rotation_task: Optional[asyncio.Task] = None
         self._current_proxy_index: int = 0
+        self._gluetun_enabled = os.environ.get("GLUETUN_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
         
         # Check for external SOCKS proxy configuration
         self._external_proxy = settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")
@@ -109,6 +110,14 @@ class MullvadVPN:
         if not self._enabled:
             logger.debug("VPN not enabled, skipping connect")
             return False
+
+        if self._gluetun_enabled:
+            self._status.connected = True
+            self._status.server = "Gluetun / Mullvad WireGuard"
+            self._status.location = "Docker shared network"
+            self._last_rotation = datetime.utcnow()
+            logger.info("VPN connected via Gluetun network namespace")
+            return True
 
         if self._external_proxy:
             self._status.connected = True
@@ -221,6 +230,8 @@ class MullvadVPN:
         return proxy
 
     def require_proxy(self) -> str:
+        if self._gluetun_enabled and self._enabled:
+            return ""
         proxy_url = self.get_proxy_url()
         if proxy_url:
             return proxy_url

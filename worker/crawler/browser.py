@@ -62,7 +62,7 @@ async def fetch_with_browser(url: str, timeout: int = 30) -> Tuple[str, Dict[str
     
     async with async_playwright() as p:
         proxy = vpn_manager.get_playwright_proxy()
-        if vpn_manager.is_enabled and not proxy:
+        if vpn_manager.is_enabled and not proxy and not getattr(vpn_manager, "_gluetun_enabled", False):
             raise RuntimeError("VPN is enabled but Playwright has no proxy configuration")
 
         # Launch with additional stealth options

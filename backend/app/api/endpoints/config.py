@@ -98,13 +98,21 @@ def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
     account_number = get_config_value(db, "vpn_account_number", "")
     proxy_url = get_config_value(db, "mullvad_socks_proxy", "") or os.environ.get("MULLVAD_SOCKS_PROXY", "")
+    gluetun_enabled = os.environ.get("GLUETUN_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     enabled = get_config_value(db, "vpn_enabled", "false") == "true"
     auto_rotate = get_config_value(db, "vpn_auto_rotate", "true") == "true"
     rotate_interval = int(get_config_value(db, "vpn_rotate_interval_minutes", "30"))
 
-    connected = enabled and bool(proxy_url)
+    connected = enabled and (bool(proxy_url) or gluetun_enabled)
     proxy_host = get_proxy_host(proxy_url)
-    current_server = proxy_host if connected and proxy_host else ("SOCKS5 proxy configured" if connected else None)
+    current_server = None
+    if connected:
+        if gluetun_enabled:
+            current_server = "Gluetun / Mullvad WireGuard"
+        elif proxy_host:
+            current_server = proxy_host
+        else:
+            current_server = "SOCKS5 proxy configured"
     current_ip = None
 
     return VPNConfigResponse(
@@ -181,11 +189,14 @@ async def test_vpn_connection(db: Session = Depends(get_db)):
         return response.json()
 
     proxy_url = get_config_value(db, "mullvad_socks_proxy", "") or os.environ.get("MULLVAD_SOCKS_PROXY", "")
+    gluetun_enabled = os.environ.get("GLUETUN_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
 
     try:
         client_kwargs = {"timeout": 10}
         if proxy_url:
             client_kwargs["transport"] = httpx.AsyncHTTPTransport(proxy=proxy_url)
+        elif gluetun_enabled:
+            client_kwargs["timeout"] = 10
 
         async with httpx.AsyncClient(**client_kwargs) as client:
             try:
