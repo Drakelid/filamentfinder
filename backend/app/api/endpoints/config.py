@@ -1,8 +1,9 @@
 import os
+from typing import List
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
 from functools import lru_cache
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -145,21 +146,46 @@ def update_vpn_config(config: VPNConfigUpdate, db: Session = Depends(get_db)):
 
 
 @router.post("/vpn/test", response_model=VPNStatusResponse)
-def test_vpn_connection(db: Session = Depends(get_db)):
+async def test_vpn_connection(db: Session = Depends(get_db)):
     """Test VPN connection with current configuration."""
-    account_number = get_config_value(db, "vpn_account_number", "")
-    
-    if not account_number:
-        raise HTTPException(status_code=400, detail="VPN account number not configured")
-    
-    # TODO: Actually test VPN connection
-    # For now, return a placeholder response
-    return VPNStatusResponse(
-        connected=False,
-        current_server=None,
-        current_ip=None,
-        account_valid=bool(account_number),
-    )
+    result = {
+        "connected": False,
+        "ip": None,
+        "country": None,
+        "mullvad_exit_ip": False,
+        "error": None,
+    }
+
+    async def fetch_json(client: httpx.AsyncClient, url: str):
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    proxy_url = get_config_value(db, "mullvad_socks_proxy", "") or os.environ.get("MULLVAD_SOCKS_PROXY", "")
+
+    try:
+        client_kwargs = {"timeout": 10}
+        if proxy_url:
+            client_kwargs["transport"] = httpx.AsyncHTTPTransport(proxy=proxy_url)
+
+        async with httpx.AsyncClient(**client_kwargs) as client:
+            try:
+                payload = await fetch_json(client, "https://am.i.mullvad.net/json")
+                result["connected"] = True
+                result["ip"] = payload.get("ip")
+                result["country"] = payload.get("country")
+                result["mullvad_exit_ip"] = bool(payload.get("mullvad_exit_ip", False))
+                return VPNStatusResponse(**result)
+            except Exception:
+                payload = await fetch_json(client, "https://ipinfo.io/json")
+                result["connected"] = True
+                result["ip"] = payload.get("ip")
+                result["country"] = payload.get("country")
+                result["mullvad_exit_ip"] = False
+                return VPNStatusResponse(**result)
+    except Exception as exc:
+        result["error"] = str(exc)
+        return VPNStatusResponse(**result)
 
 
 @router.get("/all", response_model=List[ConfigResponse])

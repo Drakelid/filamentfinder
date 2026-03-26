@@ -10,11 +10,17 @@ from app.schemas.product import (
     ProductResponse,
     ProductListResponse,
     ProductDetailResponse,
+    DealProduct,
 )
 from app.schemas.price import (
     PriceObservationResponse,
     PriceChangeResponse,
     PriceHistoryResponse,
+)
+from app.schemas.price_alert import (
+    PriceAlertCreate,
+    PriceAlertRead,
+    PriceAlertList,
 )
 from app.schemas.crawl_run import (
     CrawlRunResponse,
@@ -31,9 +37,13 @@ __all__ = [
     "ProductResponse",
     "ProductListResponse",
     "ProductDetailResponse",
+    "DealProduct",
     "PriceObservationResponse",
     "PriceChangeResponse",
     "PriceHistoryResponse",
+    "PriceAlertCreate",
+    "PriceAlertRead",
+    "PriceAlertList",
     "CrawlRunResponse",
     "CrawlRunListResponse",
 ]

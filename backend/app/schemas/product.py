@@ -56,6 +56,17 @@ class ProductDetailResponse(ProductResponse):
         from_attributes = True
 
 
+class DealProduct(ProductResponse):
+    source_name: Optional[str] = None
+    old_price: Optional[Decimal]
+    new_price: Optional[Decimal]
+    pct_drop: float
+    detected_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ProductListResponse(BaseModel):
     items: List[ProductResponse]
     total: int

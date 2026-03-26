@@ -1,8 +1,8 @@
 import csv
 import io
-from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
@@ -23,6 +23,7 @@ from app.schemas import (
     ProductResponse,
     ProductListResponse,
     ProductDetailResponse,
+    DealProduct,
     PriceObservationResponse,
     PriceChangeResponse,
     PriceHistoryResponse,
@@ -100,7 +101,9 @@ def list_products(
     if active is not None:
         query = query.filter(Product.active == active)
     if search:
-        query = query.filter(Product.name.ilike(f"%{search}%"))
+        query = query.filter(
+            Product.search_vector.op("@@")(func.plainto_tsquery("english", search))
+        )
     
     # Price filtering requires a subquery on price_observations
     if min_price is not None or max_price is not None:
@@ -161,6 +164,77 @@ def list_products(
         items.append(item)
 
     return ProductListResponse(items=items, total=total)
+
+
+@router.get("/deals", response_model=list[DealProduct])
+def list_deals(
+    limit: int = Query(20, ge=1, le=100),
+    category: Optional[str] = Query(None, description="Filter by category: filament or resin"),
+    min_pct_drop: float = Query(5.0, ge=0),
+    db: Session = Depends(get_db),
+):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    pct_drop_expr = ((PriceChange.old_price - PriceChange.new_price) / PriceChange.old_price * 100).label("pct_drop")
+
+    query = (
+        db.query(Product, PriceChange, pct_drop_expr)
+        .join(PriceChange, PriceChange.product_id == Product.id)
+        .options(joinedload(Product.price_observations), joinedload(Product.source))
+        .filter(PriceChange.changed_at >= cutoff)
+        .filter(PriceChange.old_price.isnot(None), PriceChange.new_price.isnot(None))
+        .filter(PriceChange.old_price > 0)
+        .filter(PriceChange.change_type.in_(["decrease", "price_decrease"]))
+        .filter(PriceChange.new_price < PriceChange.old_price)
+        .filter(pct_drop_expr >= min_pct_drop)
+    )
+
+    if category:
+        query = query.filter(Product.category == category.lower())
+
+    results = query.order_by(desc(pct_drop_expr), desc(PriceChange.changed_at)).limit(limit).all()
+    items = []
+    for product, change, pct_drop in results:
+        price_per_kg = None
+        if product.category == "filament":
+            weight_g = extract_weight_grams(f"{product.name} {product.variant or ''} {product.size or ''}")
+            latest_price = get_latest_price(product)
+            if weight_g is not None and latest_price is not None and latest_price.price_amount is not None:
+                price_per_kg = float(latest_price.price_amount) / (weight_g / 1000)
+
+        items.append(
+            DealProduct(
+                id=product.id,
+                source_id=product.source_id,
+                canonical_url=product.canonical_url,
+                name=product.name,
+                brand=product.brand,
+                category=product.category,
+                product_type=product.product_type,
+                variant=product.variant,
+                color=product.color,
+                size=product.size,
+                image_url=product.image_url,
+                sku=product.sku,
+                gtin=product.gtin,
+                active=product.active,
+                confidence=product.confidence,
+                latest_change_percent=product.latest_change_percent,
+                latest_change_type=product.latest_change_type,
+                latest_change_at=product.latest_change_at,
+                created_at=product.created_at,
+                updated_at=product.updated_at,
+                last_seen_at=product.last_seen_at,
+                latest_price=get_latest_price(product),
+                price_per_kg=price_per_kg,
+                source_name=product.source.name if product.source else None,
+                old_price=change.old_price,
+                new_price=change.new_price,
+                pct_drop=float(pct_drop),
+                detected_at=change.changed_at,
+            )
+        )
+
+    return items
 
 
 @router.get("/with-changes", response_model=ProductListResponse)

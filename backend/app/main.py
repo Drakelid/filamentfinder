@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.endpoints import alerts
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.api.router import api_router
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 
 
 @app.get("/health")

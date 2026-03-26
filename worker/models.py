@@ -1,7 +1,9 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List
+from uuid import UUID, uuid4
 from sqlalchemy import String, Boolean, DateTime, JSON, Text, Integer, ForeignKey, Numeric, Float
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -112,6 +114,7 @@ class Product(Base):
     source: Mapped["Source"] = relationship("Source", back_populates="products")
     price_observations: Mapped[List["PriceObservation"]] = relationship("PriceObservation", back_populates="product")
     price_changes: Mapped[List["PriceChange"]] = relationship("PriceChange", back_populates="product")
+    price_alerts: Mapped[List["PriceAlert"]] = relationship("PriceAlert", back_populates="product")
 
 
 class PriceObservation(Base):
@@ -149,6 +152,20 @@ class PriceChange(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     product: Mapped["Product"] = relationship("Product", back_populates="price_changes")
+
+
+class PriceAlert(Base):
+    __tablename__ = "price_alerts"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    product_id: Mapped[int] = mapped_column(Integer, ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    target_price: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    triggered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    product: Mapped["Product"] = relationship("Product", back_populates="price_alerts")
 
 
 class CrawlRun(Base):

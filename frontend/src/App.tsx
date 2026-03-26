@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { Printer, Package, History, Home, TrendingDown, Settings, BarChart3, Truck } from 'lucide-react'
 import SourcesPage from './pages/SourcesPage'
 import ProductsPage from './pages/ProductsPage'
+import DealsPage from './pages/DealsPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import RunsPage from './pages/RunsPage'
 import PriceChangesPage from './pages/PriceChangesPage'
@@ -58,6 +59,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <Package className="w-5 h-5" />
             Products
           </NavLink>
+          <NavLink to="/deals">
+            <TrendingDown className="w-5 h-5" />
+            Deals
+          </NavLink>
           <NavLink to="/price-changes">
             <TrendingDown className="w-5 h-5" />
             Price Changes
@@ -95,6 +100,7 @@ function App() {
           <Route path="/" element={<SourcesPage />} />
           <Route path="/sources" element={<SourcesPage />} />
           <Route path="/products" element={<ProductsPage />} />
+          <Route path="/deals" element={<DealsPage />} />
           <Route path="/products/:id" element={<ProductDetailPage />} />
           <Route path="/price-changes" element={<PriceChangesPage />} />
           <Route path="/runs" element={<RunsPage />} />

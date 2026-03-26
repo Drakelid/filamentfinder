@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import String, Boolean, DateTime, JSON, Float, Integer, ForeignKey
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.source import Source
     from app.models.price_observation import PriceObservation
     from app.models.price_change import PriceChange
+    from app.models.price_alert import PriceAlert
 
 
 class Product(Base):
@@ -33,6 +35,7 @@ class Product(Base):
     latest_change_percent: Mapped[Optional[float]] = mapped_column(Float, nullable=True, index=True)
     latest_change_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     latest_change_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    search_vector: Mapped[Optional[str]] = mapped_column(TSVECTOR, nullable=True)
     raw_data_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -51,6 +54,9 @@ class Product(Base):
     )
     price_changes: Mapped[List["PriceChange"]] = relationship(
         "PriceChange", back_populates="product", cascade="all, delete-orphan"
+    )
+    price_alerts: Mapped[List["PriceAlert"]] = relationship(
+        "PriceAlert", back_populates="product", cascade="all, delete-orphan"
     )
     canonical_product: Mapped[Optional["Product"]] = relationship(
         "Product", remote_side=[id], foreign_keys=[canonical_product_id]

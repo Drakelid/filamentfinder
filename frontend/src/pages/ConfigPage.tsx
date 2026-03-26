@@ -300,9 +300,9 @@ export default function ConfigPage() {
           </div>
 
           {testResult && (
-            <div className={`rounded-lg p-4 ${testResult.account_valid ? 'bg-green-900/30 border border-green-700' : 'bg-red-900/30 border border-red-700'}`}>
+            <div className={`rounded-lg p-4 ${testResult.connected ? 'bg-green-900/30 border border-green-700' : 'bg-red-900/30 border border-red-700'}`}>
               <div className="flex items-center gap-2 mb-2">
-                {testResult.account_valid ? (
+                {testResult.connected ? (
                   <CheckCircle className="w-5 h-5 text-green-400" />
                 ) : (
                   <XCircle className="w-5 h-5 text-red-400" />
@@ -310,13 +310,19 @@ export default function ConfigPage() {
                 <h3 className="text-sm font-medium text-gray-300">Test Result</h3>
               </div>
               <div className="text-sm">
-                <p className={testResult.account_valid ? 'text-green-400' : 'text-red-400'}>
-                  {testResult.account_valid ? 'Account is valid' : 'Account validation failed'}
+                <p className={testResult.connected ? 'text-green-400' : 'text-red-400'}>
+                  {testResult.connected ? 'Connection test succeeded' : 'Connection test failed'}
                 </p>
-                {testResult.connected && testResult.current_ip && (
+                {testResult.ip && (
                   <p className="text-gray-400 mt-1">
-                    Connected via {testResult.current_server} ({testResult.current_ip})
+                    IP {testResult.ip}{testResult.country ? ` (${testResult.country})` : ''}
                   </p>
+                )}
+                {testResult.mullvad_exit_ip && (
+                  <p className="text-emerald-400 mt-1">Mullvad exit IP detected</p>
+                )}
+                {testResult.error && (
+                  <p className="text-red-300 mt-1">{testResult.error}</p>
                 )}
               </div>
             </div>
@@ -337,7 +343,7 @@ export default function ConfigPage() {
             </button>
             <button
               onClick={() => testMutation.mutate()}
-              disabled={testing || (!displayedConfig.account_number_set && !accountNumber.trim()) || !configReady}
+              disabled={testing || !configReady}
               className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {testing ? (

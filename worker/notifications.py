@@ -1,11 +1,13 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime, timezone
 from typing import Optional
 import httpx
 import structlog
 
 from worker.config import get_settings
+from worker.models import PriceAlert, PriceObservation, Product
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -107,3 +109,38 @@ async def send_notification(
         )
     
     return email_sent or webhook_sent
+
+
+async def trigger_price_alerts(
+    db,
+    product: Product,
+    observation: PriceObservation,
+) -> int:
+    if observation.price_amount is None:
+        return 0
+
+    query = db.query(PriceAlert).filter(
+        PriceAlert.product_id == product.id,
+        PriceAlert.active == True,
+        PriceAlert.target_price >= observation.price_amount,
+    )
+    if observation.currency:
+        query = query.filter(PriceAlert.currency == observation.currency)
+
+    alerts = query.all()
+    if not alerts:
+        return 0
+
+    for alert in alerts:
+        await send_notification(
+            subject=f"Price alert triggered for {product.name}",
+            body=(
+                f"{product.name} is now {observation.currency or ''} {float(observation.price_amount):.2f} "
+                f"at {product.source.name if product.source else 'the source'}, meeting your alert target of "
+                f"{alert.currency} {float(alert.target_price):.2f}."
+            ).strip(),
+        )
+        alert.triggered_at = datetime.now(timezone.utc)
+        alert.active = False
+
+    return len(alerts)

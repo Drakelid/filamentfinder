@@ -12,7 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from worker.config import get_settings
 from worker.database import get_db_session
 from worker.models import Source, Product, PriceObservation, PriceChange, CrawlRun
-from worker.notifications import send_notification
+from worker.notifications import send_notification, trigger_price_alerts
 from worker.parsers import (
     BaseParser,
     ParsedProduct,
@@ -501,6 +501,7 @@ class Crawler:
                 crawl_run_id=self.crawl_run.id if self.crawl_run else None,
             )
             db.add(observation)
+            db.flush()
             
             if last_observation:
                 price_changed = (
@@ -551,6 +552,8 @@ class Crawler:
                         new_price=float(product.price) if product.price else None,
                         change_percent=change_percent,
                     )
+
+            await trigger_price_alerts(db, db_product, observation)
             
             db.commit()
             return db_product

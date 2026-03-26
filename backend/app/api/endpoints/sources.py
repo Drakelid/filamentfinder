@@ -1,10 +1,13 @@
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from sqlalchemy import case, func
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.security import require_admin_api_key
 from app.models import Source, Product, CrawlRun
@@ -266,6 +269,109 @@ def list_sources(
         items=[source_to_response(s, db, summary_data) for s in sources],
         total=total,
     )
+
+
+@router.get("/export")
+def export_sources(
+    api_key: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    settings = get_settings()
+    configured_key = (settings.admin_api_key or "").strip()
+    if configured_key and api_key != configured_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    sources = db.query(Source).order_by(Source.created_at.desc()).all()
+    data = [
+        {
+            "url": source.url,
+            "domain": source.domain,
+            "name": source.name,
+            "active": source.active,
+            "crawl_rules": source.crawl_rules,
+            "selector_overrides": source.selector_overrides or None,
+            "shipping_fee": source.shipping_fee,
+            "robots_txt_allowed": source.robots_txt_allowed,
+            "retry_policy": source.retry_policy or None,
+            "alert_settings": source.alert_settings or None,
+        }
+        for source in sources
+    ]
+    return Response(
+        content=json.dumps(jsonable_encoder(data)),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="sources.json"'},
+    )
+
+
+@router.post("/import", dependencies=[Depends(require_admin_api_key)])
+async def import_sources(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    result = {"imported": 0, "skipped": 0, "errors": []}
+
+    try:
+        content = await file.read()
+        if len(content) > 1024 * 1024:
+            result["errors"].append({"url": "", "reason": "File exceeds 1 MB limit"})
+            return result
+
+        payload = json.loads(content.decode("utf-8"))
+        if not isinstance(payload, list):
+            result["errors"].append({"url": "", "reason": "Expected a JSON array"})
+            return result
+    except Exception as exc:
+        result["errors"].append({"url": "", "reason": f"Invalid JSON file: {exc}"})
+        return result
+
+    for entry in payload:
+        url = ""
+        try:
+            if not isinstance(entry, dict):
+                raise ValueError("Entry must be an object")
+
+            url = str(entry.get("url") or "").strip()
+            if not url:
+                raise ValueError("Missing required field: url")
+
+            parsed = urlparse(url)
+            if not parsed.scheme or not parsed.netloc:
+                raise ValueError("Invalid URL format")
+
+            domain = parsed.netloc.lower()
+            if domain.startswith("www."):
+                domain = domain[4:]
+
+            crawl_rules = entry.get("crawl_rules") or {}
+            existing = db.query(Source).filter(Source.url == url).first()
+            if existing:
+                existing.crawl_rules_json = crawl_rules or None
+                db.commit()
+                result["skipped"] += 1
+                continue
+
+            source = Source(
+                url=url,
+                domain=domain,
+                name=entry.get("name") or domain,
+                active=True,
+                crawl_rules_json=crawl_rules or None,
+                selector_overrides_json=entry.get("selector_overrides") or None,
+                shipping_fee=entry.get("shipping_fee"),
+                robots_txt_allowed=entry.get("robots_txt_allowed"),
+                retry_policy_json=entry.get("retry_policy") or None,
+                alert_settings_json=entry.get("alert_settings") or None,
+                status="pending",
+            )
+            db.add(source)
+            db.commit()
+            result["imported"] += 1
+        except Exception as exc:
+            db.rollback()
+            result["errors"].append({"url": url or "", "reason": str(exc)})
+
+    return result
 
 
 @router.get("/{source_id}", response_model=SourceResponse)

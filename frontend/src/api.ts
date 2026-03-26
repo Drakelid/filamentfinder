@@ -101,9 +101,10 @@ export interface VPNConfig {
 
 export interface VPNStatus {
   connected: boolean
-  current_server: string | null
-  current_ip: string | null
-  account_valid: boolean
+  ip: string | null
+  country: string | null
+  mullvad_exit_ip: boolean
+  error: string | null
 }
 
 export interface StatsData {
@@ -204,8 +205,8 @@ export interface Product {
   last_seen_at: string | null
   latest_price: LatestPrice | null
   price_per_kg: number | null
-  source_name?: string
-  source_domain?: string
+  source_name?: string | null
+  source_domain?: string | null
 }
 
 export interface PriceObservation {
@@ -230,6 +231,38 @@ export interface PriceChange {
   change_type: string
   change_percent: number | null
   note: string | null
+}
+
+export interface PriceAlert {
+  id: string
+  product_id: number
+  target_price: string
+  currency: string
+  active: boolean
+  created_at: string
+  triggered_at: string | null
+}
+
+export interface PriceAlertList {
+  items: PriceAlert[]
+  total: number
+}
+
+export interface DealProduct extends Product {
+  source_name: string | null
+  old_price: string | null
+  new_price: string | null
+  pct_drop: number
+  detected_at: string
+}
+
+export interface SourceImportResult {
+  imported: number
+  skipped: number
+  errors: Array<{
+    url: string
+    reason: string
+  }>
 }
 
 export interface CrawlRun {
@@ -443,4 +476,62 @@ export const api = {
     },
     get: (id: number) => fetchApi<CrawlRun>(`/runs/${id}`),
   },
+}
+
+export function createAlert(productId: number, targetPrice: number, currency: string) {
+  return fetchApi<PriceAlert>('/alerts', {
+    method: 'POST',
+    body: JSON.stringify({
+      product_id: productId,
+      target_price: targetPrice,
+      currency,
+    }),
+  })
+}
+
+export function listAlerts(productId: number, active?: boolean) {
+  const searchParams = new URLSearchParams()
+  searchParams.set('product_id', productId.toString())
+  if (active !== undefined) searchParams.set('active', active.toString())
+  return fetchApi<PriceAlertList>(`/alerts?${searchParams.toString()}`)
+}
+
+export function deleteAlert(id: string) {
+  return fetchApi<void>(`/alerts/${id}`, { method: 'DELETE' })
+}
+
+export function fetchDeals(params?: { category?: string; min_pct_drop?: number; limit?: number }) {
+  const searchParams = new URLSearchParams()
+  if (params?.category) searchParams.set('category', params.category)
+  if (params?.min_pct_drop !== undefined) searchParams.set('min_pct_drop', params.min_pct_drop.toString())
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
+  const query = searchParams.toString()
+  return fetchApi<DealProduct[]>(`/products/deals${query ? `?${query}` : ''}`)
+}
+
+export function getSourcesExportUrl() {
+  const searchParams = new URLSearchParams()
+  if (ADMIN_API_KEY) searchParams.set('api_key', ADMIN_API_KEY)
+  const query = searchParams.toString()
+  return `${API_BASE}/sources/export${query ? `?${query}` : ''}`
+}
+
+export async function importSources(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_BASE}/sources/import`, {
+    method: 'POST',
+    headers: {
+      ...(ADMIN_API_KEY ? { 'X-API-Key': ADMIN_API_KEY } : {}),
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  return response.json() as Promise<SourceImportResult>
 }

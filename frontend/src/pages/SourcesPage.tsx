@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Trash2, ExternalLink, Loader2, CheckCircle, XCircle, Clock, AlertTriangle, Ship, RefreshCw, Pause, Bell } from 'lucide-react'
+import { Plus, Play, Trash2, ExternalLink, Loader2, CheckCircle, XCircle, Clock, AlertTriangle, Ship, RefreshCw, Pause, Bell, Download, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { api, Source, CrawlRules } from '../api'
+import { api, Source, CrawlRules, getSourcesExportUrl, importSources } from '../api'
 import { formatDistanceToNow } from 'date-fns'
 
 function formatDuration(seconds?: number | null) {
@@ -232,7 +232,10 @@ export default function SourcesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
   const [alertToasts, setAlertToasts] = useState<{ id: string; message: string; type: 'failure' | 'stale'; sourceId: number }[]>([])
+  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
   const alertSeenRef = useRef<Set<string>>(new Set())
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
   
   const { data, isLoading, error } = useQuery<{ items: Source[]; total: number }>({
@@ -254,6 +257,24 @@ export default function SourcesPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.sources.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (file: File) => importSources(file),
+    onMutate: () => {
+      setImportMessage(null)
+      setImportError(null)
+    },
+    onSuccess: async (result) => {
+      setImportMessage(`Imported ${result.imported}, skipped ${result.skipped}`)
+      if (result.errors.length > 0) {
+        setImportError(result.errors[0].reason)
+      }
+      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+    },
+    onError: (error: Error) => {
+      setImportError(error.message)
+    },
   })
 
   const sources = data?.items || []
@@ -413,14 +434,46 @@ export default function SourcesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-100">Sources</h1>
           <p className="text-gray-400 mt-1">Manage websites to track for filament and resin prices</p>
+          {importMessage && <p className="text-sm text-green-400 mt-2">{importMessage}</p>}
+          {importError && <p className="text-sm text-red-400 mt-1">{importError}</p>}
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Add Source
-        </button>
+        <div className="flex items-center gap-3">
+          <a
+            href={getSourcesExportUrl()}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            <Download className="w-5 h-5" />
+            Export JSON
+          </a>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) return
+              importMutation.mutate(file)
+              event.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
+          >
+            <Upload className="w-5 h-5" />
+            {importMutation.isPending ? 'Importing...' : 'Import JSON'}
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add Source
+          </button>
+        </div>
       </div>
 
       {alertingSources.length > 0 && (

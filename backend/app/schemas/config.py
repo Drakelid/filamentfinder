@@ -49,6 +49,7 @@ class VPNConfigResponse(BaseModel):
 class VPNStatusResponse(BaseModel):
     """Schema for VPN status response."""
     connected: bool
-    current_server: Optional[str] = None
-    current_ip: Optional[str] = None
-    account_valid: bool
+    ip: Optional[str] = None
+    country: Optional[str] = None
+    mullvad_exit_ip: bool = False
+    error: Optional[str] = None

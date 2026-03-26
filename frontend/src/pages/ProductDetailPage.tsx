@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ExternalLink, Loader2, TrendingUp, TrendingDown, Minus, Package } from 'lucide-react'
-import { api, PriceChange, PriceObservation } from '../api'
+import { api, createAlert, deleteAlert, listAlerts, PriceChange } from '../api'
 import { format, formatDistanceToNow } from 'date-fns'
+import PriceHistoryChart from '../components/PriceHistoryChart'
 
 function formatPrice(amount: string | null, currency: string | null): string {
   if (!amount) return '-'
@@ -45,6 +47,9 @@ function ChangeTypeBadge({ type, percent }: { type: string; percent: number | nu
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const productId = parseInt(id || '0')
+  const queryClient = useQueryClient()
+  const [alertTarget, setAlertTarget] = useState('')
+  const [alertError, setAlertError] = useState<string | null>(null)
   
   const { data: product, isLoading: productLoading, error: productError } = useQuery({
     queryKey: ['product', productId],
@@ -56,6 +61,49 @@ export default function ProductDetailPage() {
     queryKey: ['product-history', productId],
     queryFn: () => api.products.history(productId),
     enabled: !!productId,
+  })
+
+  const { data: alerts } = useQuery({
+    queryKey: ['alerts', productId],
+    queryFn: () => listAlerts(productId, true),
+    enabled: !!productId,
+  })
+
+  const activeAlert = alerts?.items.find((alert) => alert.active) || null
+  const latestPriceAmount = product?.latest_price?.price_amount ? parseFloat(product.latest_price.price_amount) : null
+  const latestCurrency = product?.latest_price?.currency || null
+
+  useEffect(() => {
+    if (!activeAlert && latestPriceAmount !== null) {
+      setAlertTarget((latestPriceAmount * 0.9).toFixed(2))
+    }
+  }, [activeAlert, latestPriceAmount, productId])
+
+  const createAlertMutation = useMutation({
+    mutationFn: () => {
+      if (!latestCurrency || !alertTarget) {
+        throw new Error('Current price is required before an alert can be created')
+      }
+      return createAlert(productId, parseFloat(alertTarget), latestCurrency)
+    },
+    onMutate: () => setAlertError(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['alerts', productId] })
+    },
+    onError: (error: Error) => {
+      setAlertError(error.message)
+    },
+  })
+
+  const deleteAlertMutation = useMutation({
+    mutationFn: (alertId: string) => deleteAlert(alertId),
+    onMutate: () => setAlertError(null),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['alerts', productId] })
+    },
+    onError: (error: Error) => {
+      setAlertError(error.message)
+    },
   })
   
   if (productLoading) {
@@ -256,23 +304,68 @@ export default function ProductDetailPage() {
                 <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
               </div>
             ) : history?.observations && history.observations.length > 0 ? (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {history.observations.slice(0, 20).map((obs: PriceObservation) => (
-                  <div
-                    key={obs.id}
-                    className="flex items-center justify-between py-2 border-b border-gray-700 last:border-0"
-                  >
-                    <span className="font-medium text-gray-200">
-                      {formatPrice(obs.price_amount, obs.currency)}
-                    </span>
-                    <span className="text-sm text-gray-400">
-                      {format(new Date(obs.observed_at), 'MMM d, HH:mm')}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <PriceHistoryChart
+                observations={history.observations}
+                currency={product.latest_price?.currency || history.observations[0]?.currency || 'USD'}
+              />
             ) : (
               <p className="text-gray-500 text-center py-4">No observations yet</p>
+            )}
+          </div>
+
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <h2 className="text-lg font-semibold text-gray-100 mb-4">Set Price Alert</h2>
+
+            {alertError && (
+              <div className="mb-4 rounded-lg bg-red-900/40 border border-red-700 px-3 py-2 text-sm text-red-200">
+                {alertError}
+              </div>
+            )}
+
+            {activeAlert ? (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm text-gray-400">Active threshold</div>
+                  <div className="text-lg font-semibold text-gray-100">
+                    {formatPrice(activeAlert.target_price, activeAlert.currency)}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => deleteAlertMutation.mutate(activeAlert.id)}
+                  disabled={deleteAlertMutation.isPending}
+                  className="px-3 py-2 rounded-lg bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-50"
+                >
+                  {deleteAlertMutation.isPending ? 'Removing...' : 'Remove alert'}
+                </button>
+              </div>
+            ) : latestPriceAmount !== null && latestCurrency ? (
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm text-gray-400 mb-1">Target price</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={alertTarget}
+                      onChange={(e) => setAlertTarget(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100"
+                    />
+                    <span className="text-sm text-gray-400">{latestCurrency}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => createAlertMutation.mutate()}
+                  disabled={!alertTarget || createAlertMutation.isPending}
+                  className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {createAlertMutation.isPending ? 'Setting...' : 'Set alert'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Price alerts become available once this product has a recorded price.</p>
             )}
           </div>
           

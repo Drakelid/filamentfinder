@@ -15,7 +15,7 @@ from worker.config import get_settings
 from worker.database import get_db_session
 from worker.models import Source, Product, PriceObservation
 from worker.crawler.crawler import run_crawler
-from worker.notifications import send_notification
+from worker.notifications import send_notification, trigger_price_alerts
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -389,6 +389,7 @@ class ScanWorker:
                             in_stock=parsed_product.in_stock,
                         )
                         db.add(new_observation)
+                        db.flush()
                         
                         # Check for price change
                         if last_observation and last_observation.price_amount:
@@ -409,6 +410,7 @@ class ScanWorker:
                         
                         # Update last_seen_at
                         product.last_seen_at = datetime.utcnow()
+                        await trigger_price_alerts(db, product, new_observation)
                         db.commit()
                         
                         logger.info("Price check complete", product_id=product.id, price=float(parsed_product.price))
