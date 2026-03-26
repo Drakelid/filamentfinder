@@ -10,7 +10,6 @@ services:
     environment:
       - VPN_SERVICE_PROVIDER=custom
       - VPN_TYPE=wireguard
-      - OWNED_ONLY=yes
       - DOT=off
       - HTTPPROXY=on
     restart: unless-stopped
