@@ -88,12 +88,13 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       gluetun:
-        condition: service_healthy
+        condition: service_started
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: python -m worker.scheduler
+    restart: unless-stopped
 
   frontend:
     build:
