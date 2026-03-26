@@ -16,7 +16,7 @@ services:
       - OWNED_ONLY=yes
       - DOT=off
       - FIREWALL_OUTBOUND_SUBNETS=172.30.0.0/24
-      - FIREWALL_INPUT_PORTS=8000
+      - FIREWALL_INPUT_PORTS=8001
     restart: unless-stopped
     networks:
       default:
@@ -73,6 +73,7 @@ services:
       - MULLVAD_ACCOUNT_NUMBER=${MULLVAD_ACCOUNT_NUMBER:-}
       - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-}
       - GLUETUN_ENABLED=true
+      - API_PORT=8001
     depends_on:
       gluetun:
         condition: service_started
@@ -81,7 +82,7 @@ services:
       redis:
         condition: service_healthy
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001"
 
   worker:
     build:
