@@ -147,6 +147,15 @@ def _restart_gluetun_container():
     containers[0].restart(timeout=10)
 
 
+def _get_gluetun_proxy_url() -> str:
+    proxy_url = (settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")).strip()
+    if proxy_url:
+        parsed = urlparse(proxy_url)
+        if parsed.hostname == "gluetun":
+            return proxy_url
+    return "http://gluetun:8888"
+
+
 class MullvadVPN:
     """Mullvad VPN controller supporting SOCKS5 proxy mode for Docker."""
     
@@ -402,7 +411,11 @@ async def initialize_vpn_from_config():
             return
         
         account_number = config.get("vpn_account_number", "")
-        socks_proxy = config.get("mullvad_socks_proxy", "") or settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")
+        uploaded_profiles, _ = _load_wireguard_profiles_from_db()
+        if uploaded_profiles:
+            socks_proxy = _get_gluetun_proxy_url()
+        else:
+            socks_proxy = config.get("mullvad_socks_proxy", "") or settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")
         enabled = config.get("vpn_enabled", "false") == "true"
         auto_rotate = config.get("vpn_auto_rotate", "true") == "true"
         rotate_interval = int(config.get("vpn_rotate_interval_minutes", "30"))

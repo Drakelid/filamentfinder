@@ -108,6 +108,13 @@ def get_proxy_host(proxy_url: str) -> str | None:
         return None
 
 
+def get_gluetun_proxy_url() -> str:
+    proxy_url = os.environ.get("MULLVAD_SOCKS_PROXY", "").strip()
+    if proxy_url and get_proxy_host(proxy_url) == "gluetun":
+        return proxy_url
+    return "http://gluetun:8888"
+
+
 def parse_wireguard_config(config_text: str) -> tuple[str, str]:
     private_key_match = WIREGUARD_PRIVATE_KEY_PATTERN.search(config_text)
     address_match = WIREGUARD_ADDRESS_PATTERN.search(config_text)
@@ -240,19 +247,30 @@ def get_wireguard_file_metadata(db: Session) -> tuple[bool, str | None, datetime
     return True, file_name, uploaded_at, len(profiles), get_active_wireguard_file_name(db)
 
 
+def get_effective_proxy_url(db: Session) -> str:
+    configured_proxy = get_config_value(db, "mullvad_socks_proxy", "").strip()
+    env_proxy = os.environ.get("MULLVAD_SOCKS_PROXY", "").strip()
+    wireguard_file_configured, _, _, wireguard_profile_count, _ = get_wireguard_file_metadata(db)
+
+    if wireguard_file_configured or wireguard_profile_count > 0:
+        return get_gluetun_proxy_url()
+
+    return configured_proxy or env_proxy
+
+
 @router.get("/vpn", response_model=VPNConfigResponse)
 def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
     account_number = get_config_value(db, "vpn_account_number", "")
-    proxy_url = get_config_value(db, "mullvad_socks_proxy", "") or os.environ.get("MULLVAD_SOCKS_PROXY", "")
-    gluetun_enabled = os.environ.get("GLUETUN_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     enabled = get_config_value(db, "vpn_enabled", "false") == "true"
     auto_rotate = get_config_value(db, "vpn_auto_rotate", "true") == "true"
     rotate_interval = int(get_config_value(db, "vpn_rotate_interval_minutes", "30"))
     wireguard_file_configured, wireguard_file_name, wireguard_uploaded_at, wireguard_profile_count, wireguard_active_file_name = get_wireguard_file_metadata(db)
+    proxy_url = get_effective_proxy_url(db)
+    proxy_host = get_proxy_host(proxy_url)
+    gluetun_enabled = wireguard_file_configured or proxy_host == "gluetun"
 
     connected = enabled and (bool(proxy_url) or gluetun_enabled)
-    proxy_host = get_proxy_host(proxy_url)
     current_server = None
     if connected:
         if gluetun_enabled:
@@ -406,10 +424,30 @@ async def test_vpn_connection(db: Session = Depends(get_db)):
         response.raise_for_status()
         return response.json()
 
-    proxy_url = get_config_value(db, "mullvad_socks_proxy", "") or os.environ.get("MULLVAD_SOCKS_PROXY", "")
-    gluetun_enabled = os.environ.get("GLUETUN_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    async def fetch_text(client: httpx.AsyncClient, url: str):
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.text.strip()
+
+    proxy_url = get_effective_proxy_url(db)
+    gluetun_enabled = get_proxy_host(proxy_url) == "gluetun"
 
     try:
+        if gluetun_enabled:
+            try:
+                async with httpx.AsyncClient(timeout=5) as control_client:
+                    try:
+                        payload = await fetch_json(control_client, "http://gluetun:8000/v1/publicip/ip")
+                        public_ip = payload.get("public_ip") or payload.get("ip")
+                    except Exception:
+                        public_ip = await fetch_text(control_client, "http://gluetun:8000/ip")
+
+                    if public_ip:
+                        result["connected"] = True
+                        result["ip"] = public_ip
+            except Exception as control_exc:
+                result["error"] = f"Gluetun control server check failed: {control_exc}"
+
         client_kwargs = {"timeout": 10}
         if proxy_url:
             client_kwargs["proxy"] = proxy_url
@@ -430,9 +468,16 @@ async def test_vpn_connection(db: Session = Depends(get_db)):
                 result["ip"] = payload.get("ip")
                 result["country"] = payload.get("country")
                 result["mullvad_exit_ip"] = False
-                result["error"] = f"Mullvad check failed, fallback succeeded: {mullvad_exc}"
+                existing_error = result["error"]
+                fallback_message = f"Mullvad check failed, fallback succeeded: {mullvad_exc}"
+                result["error"] = f"{existing_error}; {fallback_message}" if existing_error else fallback_message
                 return VPNStatusResponse(**result)
     except Exception as exc:
+        if result["connected"]:
+            existing_error = result["error"]
+            final_message = f"Proxy validation failed after Gluetun tunnel check: {exc}"
+            result["error"] = f"{existing_error}; {final_message}" if existing_error else final_message
+            return VPNStatusResponse(**result)
         result["error"] = str(exc)
         return VPNStatusResponse(**result)
 
