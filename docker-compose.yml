@@ -15,7 +15,12 @@ services:
       - SERVER_COUNTRIES=${MULLVAD_SERVER_COUNTRIES:-Norway,Sweden,Denmark,Finland}
       - OWNED_ONLY=yes
       - DOT=off
+      - FIREWALL_OUTBOUND_SUBNETS=172.30.0.0/24
+      - FIREWALL_INPUT_PORTS=8000
     restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: 172.30.0.2
 
   db:
     image: postgres:15-alpine
@@ -115,3 +120,9 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
