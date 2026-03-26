@@ -2,6 +2,8 @@ import json
 import os
 import re
 import shutil
+import socket
+import ipaddress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
@@ -33,6 +35,7 @@ GLUETUN_WIREGUARD_FILE = GLUETUN_WIREGUARD_DIR / "wg0.conf"
 GLUETUN_WIREGUARD_PROFILES_DIR = GLUETUN_WIREGUARD_DIR / "profiles"
 WIREGUARD_PRIVATE_KEY_PATTERN = re.compile(r"^\s*PrivateKey\s*=\s*(.+?)\s*$", re.MULTILINE)
 WIREGUARD_ADDRESS_PATTERN = re.compile(r"^\s*Address\s*=\s*(.+?)\s*$", re.MULTILINE)
+WIREGUARD_ENDPOINT_PATTERN = re.compile(r"^(\s*Endpoint\s*=\s*)([^:\s]+)(:\d+\s*)$", re.MULTILINE)
 
 
 @lru_cache()
@@ -117,6 +120,25 @@ def parse_wireguard_config(config_text: str) -> tuple[str, str]:
         raise HTTPException(status_code=400, detail="WireGuard config contains empty PrivateKey or Address values")
 
     return private_key, addresses
+
+
+def normalize_wireguard_config(config_text: str) -> str:
+    def replace_endpoint(match: re.Match[str]) -> str:
+        prefix, host, suffix = match.groups()
+        try:
+            ipaddress.ip_address(host)
+            return match.group(0)
+        except ValueError:
+            pass
+
+        try:
+            resolved_ip = socket.gethostbyname(host)
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"Failed to resolve WireGuard endpoint host {host}: {exc}") from exc
+
+        return f"{prefix}{resolved_ip}{suffix}"
+
+    return WIREGUARD_ENDPOINT_PATTERN.sub(replace_endpoint, config_text)
 
 
 def sanitize_wireguard_filename(filename: str) -> str:
@@ -276,8 +298,9 @@ async def upload_wireguard_config(
         except UnicodeDecodeError as exc:
             raise HTTPException(status_code=400, detail=f"WireGuard config {filename} must be valid UTF-8 text") from exc
 
-        _, addresses = parse_wireguard_config(config_text)
-        (GLUETUN_WIREGUARD_PROFILES_DIR / filename).write_text(config_text, encoding="utf-8")
+        normalized_config_text = normalize_wireguard_config(config_text)
+        _, addresses = parse_wireguard_config(normalized_config_text)
+        (GLUETUN_WIREGUARD_PROFILES_DIR / filename).write_text(normalized_config_text, encoding="utf-8")
         profiles_by_name[filename] = {
             "file_name": filename,
             "addresses": addresses,
