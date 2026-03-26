@@ -114,6 +114,8 @@ export default function ConfigPage() {
     current_server: null,
     current_ip: null,
   }
+  const vpnConfigured = displayedConfig.enabled && (displayedConfig.proxy_configured || displayedConfig.gluetun_mode)
+  const vpnVerified = testResult?.connected === true
 
   if (vpnConfigQuery.isLoading) {
     return (
@@ -160,11 +162,15 @@ export default function ConfigPage() {
         <div className="flex items-center gap-3 mb-6">
           <Shield className="w-6 h-6 text-purple-500" />
           <h2 className="text-xl font-semibold text-gray-100">Mullvad VPN</h2>
-          {displayedConfig.connected && (
+          {vpnVerified ? (
             <span className="px-2 py-1 text-xs font-medium bg-green-900/50 text-green-400 rounded-full">
-              Connected
+              Verified
             </span>
-          )}
+          ) : vpnConfigured ? (
+            <span className="px-2 py-1 text-xs font-medium bg-blue-900/50 text-blue-300 rounded-full">
+              Configured
+            </span>
+          ) : null}
         </div>
 
         <div className="space-y-6">
@@ -312,8 +318,8 @@ export default function ConfigPage() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-gray-500">Connection:</span>{' '}
-                <span className={displayedConfig.connected ? 'text-green-400' : 'text-yellow-400'}>
-                  {displayedConfig.connected ? 'Connected' : (enabled ? 'Proxy Not Configured' : 'Disabled')}
+                <span className={vpnVerified ? 'text-green-400' : vpnConfigured ? 'text-blue-300' : 'text-yellow-400'}>
+                  {vpnVerified ? 'Verified by test' : vpnConfigured ? 'Configured, not verified' : (enabled ? 'Proxy Not Configured' : 'Disabled')}
                 </span>
               </div>
               {displayedConfig.current_server && (
@@ -329,7 +335,7 @@ export default function ConfigPage() {
                 </div>
               )}
             </div>
-            {!displayedConfig.connected && (
+            {!vpnConfigured && (
               <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-sm text-yellow-300">
                 <p className="font-medium">VPN routing requires a SOCKS5 proxy URL:</p>
                 <ol className="list-decimal list-inside mt-1 text-yellow-400 space-y-1">
@@ -337,6 +343,11 @@ export default function ConfigPage() {
                   <li>Use <code className="bg-gray-800 px-1 rounded">MULLVAD_SOCKS_PROXY=socks5://user:pass@host:1080</code></li>
                   <li>Restart containers after changing environment-based proxy settings</li>
                 </ol>
+              </div>
+            )}
+            {vpnConfigured && !vpnVerified && (
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-700 rounded text-sm text-blue-200">
+                Configuration is present, but the live VPN path is only confirmed after <span className="font-medium">Test Connection</span> succeeds.
               </div>
             )}
           </div>
