@@ -37,6 +37,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      default:
+        ipv4_address: 172.30.0.3
 
   redis:
     image: redis:7-alpine
@@ -49,6 +52,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      default:
+        ipv4_address: 172.30.0.4
 
   backend:
     build:
@@ -56,8 +62,8 @@ services:
       dockerfile: Dockerfile
     network_mode: "service:gluetun"
     environment:
-      - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://filamentfinder:filamentfinder@172.30.0.3:5432/filamentfinder
+      - REDIS_URL=redis://172.30.0.4:6379/0
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - DEBUG=${DEBUG:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://fredrikdrakelid.asuscomm.com}
@@ -83,8 +89,8 @@ services:
       dockerfile: Dockerfile
     network_mode: "service:gluetun"
     environment:
-      - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://filamentfinder:filamentfinder@172.30.0.3:5432/filamentfinder
+      - REDIS_URL=redis://172.30.0.4:6379/0
       - CRAWLER_USER_AGENT=${CRAWLER_USER_AGENT:-FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)}
       - CRAWLER_RATE_LIMIT=${CRAWLER_RATE_LIMIT:-1.0}
       - CRAWLER_MAX_PAGES=${CRAWLER_MAX_PAGES:-100}
