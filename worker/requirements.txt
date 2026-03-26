@@ -15,6 +15,7 @@ robotexclusionrulesparser==1.7.1
 aiohttp==3.9.1
 playwright==1.41.0
 cryptography==42.0.0
+docker==7.1.0
 pytest==7.4.4
 pytest-asyncio==0.23.3
 pytest-cov==4.1.0

@@ -44,6 +44,8 @@ class VPNConfigResponse(BaseModel):
     wireguard_file_configured: bool = False
     wireguard_file_name: Optional[str] = None
     wireguard_uploaded_at: Optional[datetime] = None
+    wireguard_profile_count: int = 0
+    wireguard_active_file_name: Optional[str] = None
     enabled: bool
     auto_rotate: bool
     rotate_interval_minutes: int
@@ -62,6 +64,8 @@ class VPNStatusResponse(BaseModel):
 
 
 class WireGuardConfigUploadResponse(BaseModel):
-    file_name: str
-    addresses: str
-    uploaded_at: datetime
+    file_names: list[str]
+    active_file_name: str
+    profile_count: int
+    restarted: bool
+    restart_error: Optional[str] = None

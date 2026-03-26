@@ -96,6 +96,8 @@ export interface VPNConfig {
   wireguard_file_configured: boolean
   wireguard_file_name: string | null
   wireguard_uploaded_at: string | null
+  wireguard_profile_count: number
+  wireguard_active_file_name: string | null
   enabled: boolean
   auto_rotate: boolean
   rotate_interval_minutes: number
@@ -113,9 +115,11 @@ export interface VPNStatus {
 }
 
 export interface WireGuardConfigUploadResult {
-  file_name: string
-  addresses: string
-  uploaded_at: string
+  file_names: string[]
+  active_file_name: string
+  profile_count: number
+  restarted: boolean
+  restart_error: string | null
 }
 
 export interface StatsData {
@@ -548,9 +552,11 @@ export async function importSources(file: File) {
   return response.json() as Promise<SourceImportResult>
 }
 
-export async function uploadWireguardConfig(file: File) {
+export async function uploadWireguardConfig(files: File[]) {
   const formData = new FormData()
-  formData.append('file', file)
+  for (const file of files) {
+    formData.append('files', file)
+  }
 
   const response = await fetch(`${API_BASE}/config/vpn/wireguard-config`, {
     method: 'POST',

@@ -99,14 +99,15 @@ export default function ConfigPage() {
     },
   })
 
-  const wireguardUploadMutation = useMutation<WireGuardConfigUploadResult, Error, File>({
+  const wireguardUploadMutation = useMutation<WireGuardConfigUploadResult, Error, File[]>({
     mutationFn: uploadWireguardConfig,
     onMutate: () => {
       setError(null)
       setUploadSuccess(null)
     },
     onSuccess: async (data: WireGuardConfigUploadResult) => {
-      setUploadSuccess(`Uploaded ${data.file_name}. Restart Gluetun to apply it.`)
+      const restartMessage = data.restarted ? 'Gluetun restarted automatically.' : `Gluetun restart failed: ${data.restart_error || 'unknown error'}`
+      setUploadSuccess(`Uploaded ${data.file_names.length} config file(s). Active profile: ${data.active_file_name}. ${restartMessage}`)
       await vpnConfigQuery.refetch()
     },
     onError: (err: Error) => {
@@ -128,6 +129,8 @@ export default function ConfigPage() {
     wireguard_file_configured: false,
     wireguard_file_name: null,
     wireguard_uploaded_at: null,
+    wireguard_profile_count: 0,
+    wireguard_active_file_name: null,
     enabled,
     auto_rotate: autoRotate,
     rotate_interval_minutes: rotateInterval,
@@ -211,11 +214,12 @@ export default function ConfigPage() {
                 ref={wireguardInputRef}
                 type="file"
                 accept=".conf"
+                multiple
                 className="hidden"
                 onChange={(e) => {
-                  const selectedFile = e.target.files?.[0]
-                  if (!selectedFile) return
-                  wireguardUploadMutation.mutate(selectedFile)
+                  const selectedFiles = Array.from(e.target.files ?? [])
+                  if (!selectedFiles.length) return
+                  wireguardUploadMutation.mutate(selectedFiles)
                   e.currentTarget.value = ''
                 }}
               />
@@ -230,18 +234,23 @@ export default function ConfigPage() {
                 ) : (
                   <Upload className="w-4 h-4" />
                 )}
-                Upload .conf
+                Upload .conf files
               </button>
-              {displayedConfig.wireguard_file_configured && displayedConfig.wireguard_file_name && (
+              {displayedConfig.wireguard_file_configured && displayedConfig.wireguard_active_file_name && (
                 <span className="text-sm text-green-400">
-                  {displayedConfig.wireguard_file_name}
+                  Active: {displayedConfig.wireguard_active_file_name}
                   {displayedConfig.wireguard_uploaded_at ? ` uploaded ${new Date(displayedConfig.wireguard_uploaded_at).toLocaleString()}` : ''}
                 </span>
               )}
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              Upload a Mullvad WireGuard config file to write <code className="bg-gray-800 px-1 rounded">wg0.conf</code> into the shared Gluetun volume. Restart Gluetun after upload so it picks up the new file.
+              Upload one or more Mullvad WireGuard config files. They are stored as reusable profiles, the first uploaded file becomes active immediately, and Gluetun is restarted automatically after upload.
             </p>
+            {displayedConfig.wireguard_profile_count > 0 && (
+              <p className="mt-1 text-sm text-blue-300">
+                {displayedConfig.wireguard_profile_count} profile(s) available for automatic rotation.
+              </p>
+            )}
           </div>
 
           <div>

@@ -12,13 +12,17 @@ To configure Mullvad VPN:
 The VPN automatically connects to Nordic servers (Norway, Sweden, Denmark, Finland).
 """
 import asyncio
+import json
 import random
 import os
+import shutil
+from pathlib import Path
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+import docker
 from cryptography.fernet import Fernet, InvalidToken
 import structlog
 
@@ -47,6 +51,9 @@ MULLVAD_SOCKS5_SERVERS = [
 ]
 
 SOCKS5_PORT = 1080
+GLUETUN_WIREGUARD_DIR = Path("/gluetun/wireguard")
+GLUETUN_WIREGUARD_FILE = GLUETUN_WIREGUARD_DIR / "wg0.conf"
+GLUETUN_WIREGUARD_PROFILES_DIR = GLUETUN_WIREGUARD_DIR / "profiles"
 
 
 @dataclass
@@ -57,6 +64,87 @@ class VPNStatus:
     ip: Optional[str] = None
     location: Optional[str] = None
     last_rotation: Optional[datetime] = None
+
+
+def _load_wireguard_profiles_from_db() -> tuple[list[dict], Optional[str]]:
+    from sqlalchemy import text
+    from worker.database import get_db_session
+
+    db = get_db_session()
+    try:
+        rows = db.execute(
+            text(
+                "SELECT key, value, encrypted FROM config "
+                "WHERE key IN ('vpn_wireguard_profiles_json', 'vpn_wireguard_active_file_name')"
+            )
+        )
+        config = {row[0]: _decrypt_if_needed(row[1], row[2]) for row in rows}
+        try:
+            profiles = json.loads(config.get("vpn_wireguard_profiles_json", "[]"))
+        except json.JSONDecodeError:
+            profiles = []
+        if not isinstance(profiles, list):
+            profiles = []
+        profiles = [profile for profile in profiles if isinstance(profile, dict) and profile.get("file_name")]
+        active_file_name = config.get("vpn_wireguard_active_file_name", "") or None
+        return profiles, active_file_name
+    finally:
+        db.close()
+
+
+def _set_active_wireguard_profile(file_name: str):
+    from sqlalchemy import text
+    from worker.database import get_db_session
+
+    profile_path = GLUETUN_WIREGUARD_PROFILES_DIR / file_name
+    if not profile_path.exists():
+        raise FileNotFoundError(f"WireGuard profile {file_name} does not exist")
+
+    GLUETUN_WIREGUARD_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(profile_path, GLUETUN_WIREGUARD_FILE)
+
+    db = get_db_session()
+    try:
+        existing = db.execute(
+            text("SELECT id FROM config WHERE key = 'vpn_wireguard_active_file_name'")
+        ).first()
+        if existing:
+            db.execute(
+                text("UPDATE config SET value = :value, encrypted = false WHERE key = 'vpn_wireguard_active_file_name'"),
+                {"value": file_name},
+            )
+        else:
+            db.execute(
+                text(
+                    "INSERT INTO config (key, value, encrypted, description) "
+                    "VALUES ('vpn_wireguard_active_file_name', :value, false, 'Active WireGuard profile')"
+                ),
+                {"value": file_name},
+            )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _restart_gluetun_container():
+    client = docker.from_env()
+    project_name = None
+    current_container_id = os.environ.get("HOSTNAME")
+    if current_container_id:
+        try:
+            current_container = client.containers.get(current_container_id)
+            project_name = current_container.labels.get("com.docker.compose.project")
+        except Exception:
+            project_name = None
+
+    filters = {"label": ["com.docker.compose.service=gluetun"]}
+    if project_name:
+        filters["label"].append(f"com.docker.compose.project={project_name}")
+
+    containers = client.containers.list(all=True, filters=filters)
+    if not containers:
+        raise RuntimeError("Gluetun container was not found through the Docker socket")
+    containers[0].restart(timeout=10)
 
 
 class MullvadVPN:
@@ -120,9 +208,10 @@ class MullvadVPN:
             return True
 
         if self._external_proxy:
+            profiles, active_file_name = _load_wireguard_profiles_from_db()
             self._status.connected = True
-            self._status.server = urlparse(self._external_proxy).hostname or "SOCKS5 proxy"
-            self._status.location = "Proxy"
+            self._status.server = active_file_name or urlparse(self._external_proxy).hostname or "SOCKS5 proxy"
+            self._status.location = "Uploaded WireGuard profile" if profiles else "Proxy"
             self._last_rotation = datetime.utcnow()
             logger.info("VPN connected via configured proxy", server=self._status.server)
             return True
@@ -157,6 +246,28 @@ class MullvadVPN:
         
         logger.info("VPN SOCKS5 proxy rotated", server=server, location=location)
         return True
+
+    async def rotate_uploaded_wireguard_profile(self) -> bool:
+        """Rotate to the next uploaded WireGuard profile and restart Gluetun."""
+        profiles, active_file_name = _load_wireguard_profiles_from_db()
+        if len(profiles) < 2:
+            return False
+
+        profile_names = [profile["file_name"] for profile in profiles]
+        if active_file_name not in profile_names:
+            next_file_name = profile_names[0]
+        else:
+            next_index = (profile_names.index(active_file_name) + 1) % len(profile_names)
+            next_file_name = profile_names[next_index]
+
+        _set_active_wireguard_profile(next_file_name)
+        _restart_gluetun_container()
+
+        self._status.server = next_file_name
+        self._status.location = "Uploaded WireGuard profile"
+        self._last_rotation = datetime.utcnow()
+        logger.info("VPN WireGuard profile rotated", profile=next_file_name)
+        return True
     
     async def get_status(self) -> VPNStatus:
         """Get current VPN status."""
@@ -172,6 +283,11 @@ class MullvadVPN:
         
         elapsed = datetime.utcnow() - self._last_rotation
         if elapsed >= timedelta(minutes=self._rotate_interval_minutes):
+            profiles, _ = _load_wireguard_profiles_from_db()
+            if len(profiles) > 1:
+                logger.info("VPN rotation interval reached, rotating uploaded WireGuard profile")
+                return await self.rotate_uploaded_wireguard_profile()
+
             logger.info("VPN rotation interval reached, rotating SOCKS5 server")
             return await self.rotate_server()
         

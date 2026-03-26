@@ -65,6 +65,7 @@ services:
       - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-http://gluetun:8888}
     volumes:
       - gluetun_data:/gluetun
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
         condition: service_healthy
@@ -90,6 +91,9 @@ services:
       - SCAN_SCHEDULE_CRON=${SCAN_SCHEDULE_CRON:-0 6 * * *}
       - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-http://gluetun:8888}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - gluetun_data:/gluetun
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       gluetun:
         condition: service_started
