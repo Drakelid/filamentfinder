@@ -8,11 +8,8 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
-      - VPN_SERVICE_PROVIDER=mullvad
+      - VPN_SERVICE_PROVIDER=custom
       - VPN_TYPE=wireguard
-      - WIREGUARD_PRIVATE_KEY=${MULLVAD_WIREGUARD_PRIVATE_KEY:-}
-      - WIREGUARD_ADDRESSES=${MULLVAD_WIREGUARD_ADDRESSES:-}
-      - SERVER_COUNTRIES=${MULLVAD_SERVER_COUNTRIES:-Norway,Sweden,Denmark,Finland}
       - OWNED_ONLY=yes
       - DOT=off
       - HTTPPROXY=on
