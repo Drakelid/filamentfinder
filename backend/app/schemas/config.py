@@ -38,6 +38,7 @@ class VPNConfigUpdate(BaseModel):
 
 class VPNConfigResponse(BaseModel):
     """Schema for VPN configuration response."""
+    gluetun_mode: bool = False
     account_number_set: bool
     proxy_configured: bool
     enabled: bool

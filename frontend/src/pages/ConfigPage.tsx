@@ -46,7 +46,7 @@ export default function ConfigPage() {
         rotate_interval_minutes: rotateInterval,
       }
 
-      if (accountNumber.trim()) {
+      if (!vpnConfig?.gluetun_mode && accountNumber.trim()) {
         payload.account_number = accountNumber.trim()
       }
       if (socksProxy.trim()) {
@@ -104,6 +104,7 @@ export default function ConfigPage() {
 
   const configReady = !vpnConfigQuery.isLoading
   const displayedConfig: VPNConfig = vpnConfig ?? {
+    gluetun_mode: false,
     account_number_set: false,
     proxy_configured: false,
     enabled,
@@ -176,26 +177,38 @@ export default function ConfigPage() {
                 type={showAccountNumber ? 'text' : 'password'}
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
-                placeholder={displayedConfig.account_number_set ? '***************' : 'Enter your Mullvad account number'}
+                placeholder={
+                  displayedConfig.gluetun_mode
+                    ? 'Not used with Gluetun WireGuard mode'
+                    : displayedConfig.account_number_set
+                    ? '***************'
+                    : 'Enter your Mullvad account number'
+                }
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
-                disabled={!configReady}
+                disabled={!configReady || displayedConfig.gluetun_mode}
               />
               <button
                 type="button"
                 onClick={() => setShowAccountNumber(!showAccountNumber)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 disabled:opacity-50"
-                disabled={!configReady}
+                disabled={!configReady || displayedConfig.gluetun_mode}
               >
                 {showAccountNumber ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
             <p className="mt-1 text-sm text-gray-500">
-              Your 16-digit Mullvad account number. Get one at{' '}
-              <a href="https://mullvad.net" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                mullvad.net
-              </a>
+              {displayedConfig.gluetun_mode ? (
+                'This deployment uses Gluetun + Mullvad WireGuard. The account number is not used here.'
+              ) : (
+                <>
+                  Your 16-digit Mullvad account number. Get one at{' '}
+                  <a href="https://mullvad.net" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                    mullvad.net
+                  </a>
+                </>
+              )}
             </p>
-            {displayedConfig.account_number_set && (
+            {displayedConfig.account_number_set && !displayedConfig.gluetun_mode && (
               <p className="mt-1 text-sm text-green-500">
                 Account number is configured
               </p>

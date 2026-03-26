@@ -90,6 +90,7 @@ export interface Source {
 }
 
 export interface VPNConfig {
+  gluetun_mode: boolean
   account_number_set: boolean
   proxy_configured: boolean
   enabled: boolean

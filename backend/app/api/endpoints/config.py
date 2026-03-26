@@ -116,6 +116,7 @@ def get_vpn_config(db: Session = Depends(get_db)):
     current_ip = None
 
     return VPNConfigResponse(
+        gluetun_mode=gluetun_enabled,
         account_number_set=bool(account_number),
         proxy_configured=bool(proxy_url),
         enabled=enabled,
