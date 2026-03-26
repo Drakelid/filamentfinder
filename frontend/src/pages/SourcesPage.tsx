@@ -1,35 +1,42 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Trash2, ExternalLink, Loader2, CheckCircle, XCircle, Clock, AlertTriangle, Ship, RefreshCw, Pause, Bell, Download, Upload } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Download,
+  ExternalLink,
+  Loader2,
+  MoreVertical,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Ship,
+  Trash2,
+  Upload,
+  XCircle,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { api, Source, CrawlRules, getSourcesExportUrl, importSources } from '../api'
 import { formatDistanceToNow } from 'date-fns'
-
-function formatDuration(seconds?: number | null) {
-  if (!seconds || seconds <= 0) return '—'
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.round((seconds % 3600) / 60)
-  return `${hours}h ${minutes}m`
-}
+import { api, Source, CrawlRules, getSourcesExportUrl, importSources } from '../api'
+import { ActionMenu, EmptyState, LoadingState, MiniSparkline, MetricCard, SectionCard, StatusDot, cx } from '../components/admin/AdminUI'
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    pending: 'bg-gray-700 text-gray-300',
-    scanning: 'bg-blue-900 text-blue-300',
-    completed: 'bg-green-900 text-green-300',
-    failed: 'bg-red-900 text-red-300',
+    pending: 'bg-slate-800 text-slate-300 ring-slate-700/70',
+    scanning: 'bg-sky-500/15 text-sky-200 ring-sky-500/20',
+    completed: 'bg-emerald-500/15 text-emerald-200 ring-emerald-500/20',
+    failed: 'bg-rose-500/15 text-rose-200 ring-rose-500/20',
   }
-  const icons: Record<string, React.ReactNode> = {
-    pending: <Clock className="w-3 h-3" />,
-    scanning: <Loader2 className="w-3 h-3 animate-spin" />,
-    completed: <CheckCircle className="w-3 h-3" />,
-    failed: <XCircle className="w-3 h-3" />,
+  const icons: Record<string, ReactNode> = {
+    pending: <Clock className="h-3.5 w-3.5" />,
+    scanning: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
+    completed: <CheckCircle className="h-3.5 w-3.5" />,
+    failed: <XCircle className="h-3.5 w-3.5" />,
   }
-  
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.pending}`}>
+    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1', styles[status] || styles.pending)}>
       {icons[status]}
       {status}
     </span>
@@ -56,23 +63,15 @@ function AddSourceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
   const [scheduleTimezone, setScheduleTimezone] = useState('')
   const [scheduleDays, setScheduleDays] = useState<string[]>([])
   const [error, setError] = useState('')
-  
+
   const mutation = useMutation({
     mutationFn: () => {
-      const crawlRules: Partial<CrawlRules> = {
-        max_pages: maxPages,
-        max_depth: maxDepth,
-      }
+      const crawlRules: Partial<CrawlRules> = { max_pages: maxPages, max_depth: maxDepth }
       if (scheduleStart) crawlRules.schedule_start_hour = scheduleStart
       if (scheduleEnd) crawlRules.schedule_end_hour = scheduleEnd
       if (scheduleTimezone) crawlRules.schedule_timezone = scheduleTimezone
       if (scheduleDays.length) crawlRules.schedule_days = scheduleDays
-
-      return api.sources.create({
-        url,
-        name: name || undefined,
-        crawl_rules: crawlRules,
-      })
+      return api.sources.create({ url, name: name || undefined, crawl_rules: crawlRules })
     },
     onSuccess: () => {
       onSuccess()
@@ -80,105 +79,52 @@ function AddSourceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
     },
     onError: (err: Error) => setError(err.message),
   })
-  
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6 border border-gray-700">
-        <h2 className="text-xl font-semibold mb-4 text-gray-100">Add Source</h2>
-        
-        {error && (
-          <div className="mb-4 p-3 bg-red-900/50 text-red-300 rounded-lg text-sm">
-            {error}
-          </div>
-        )}
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">URL *</label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://store.example.com/filaments"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100 placeholder-gray-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Name (optional)</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Favorite Store"
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100 placeholder-gray-500"
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Max Pages</label>
-              <input
-                type="number"
-                value={maxPages}
-                onChange={(e) => setMaxPages(parseInt(e.target.value) || 100)}
-                min={1}
-                max={10000}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">Max Depth</label>
-              <input
-                type="number"
-                value={maxDepth}
-                onChange={(e) => setMaxDepth(parseInt(e.target.value) || 3)}
-                min={1}
-                max={10}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
-              />
-            </div>
-          </div>
 
-          <div className="border-t border-gray-700 pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-200">Scheduling window (optional)</span>
-              <span className="text-xs text-gray-500">Limit crawl times for polite scraping</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Start time</label>
-                <input
-                  type="time"
-                  value={scheduleStart}
-                  onChange={(e) => setScheduleStart(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">End time</label>
-                <input
-                  type="time"
-                  value={scheduleEnd}
-                  onChange={(e) => setScheduleEnd(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Timezone</label>
-                <input
-                  type="text"
-                  placeholder="Europe/Oslo"
-                  value={scheduleTimezone}
-                  onChange={(e) => setScheduleTimezone(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-100"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Days allowed</label>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl shadow-black/40">
+        <div className="border-b border-slate-800 px-6 py-4">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Source setup</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-100">Add Source</h2>
+        </div>
+        <div className="space-y-5 px-6 py-5">
+          {error && <div className="rounded-2xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{error}</div>}
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-300">URL *</span>
+              <input value={url} onChange={(e) => setUrl(e.target.value)} type="url" placeholder="https://store.example.com/filaments" className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-300">Name</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="My Favorite Store" className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-300">Max pages</span>
+              <input type="number" value={maxPages} onChange={(e) => setMaxPages(parseInt(e.target.value, 10) || 100)} min={1} max={10000} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-300">Max depth</span>
+              <input type="number" value={maxDepth} onChange={(e) => setMaxDepth(parseInt(e.target.value, 10) || 3)} min={1} max={10} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
+            </label>
+          </div>
+          <div className="rounded-3xl border border-slate-800 bg-slate-950/30 p-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Start time</span>
+                <input type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100" />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">End time</span>
+                <input type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100" />
+              </label>
+              <label className="space-y-2">
+                <span className="text-sm text-slate-300">Timezone</span>
+                <input type="text" placeholder="Europe/Oslo" value={scheduleTimezone} onChange={(e) => setScheduleTimezone(e.target.value)} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100" />
+              </label>
+              <div className="space-y-2">
+                <span className="text-sm text-slate-300">Days allowed</span>
                 <div className="flex flex-wrap gap-2">
                   {DAY_OPTIONS.map((day) => {
                     const active = scheduleDays.includes(day.value)
@@ -186,14 +132,8 @@ function AddSourceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
                       <button
                         key={day.value}
                         type="button"
-                        onClick={() => {
-                          setScheduleDays((prev) => (
-                            prev.includes(day.value)
-                              ? prev.filter((d) => d !== day.value)
-                              : [...prev, day.value]
-                          ))
-                        }}
-                        className={`px-2 py-1 rounded-full text-xs border ${active ? 'bg-blue-600 text-white border-blue-500' : 'border-gray-600 text-gray-300 hover:border-gray-400'}`}
+                        onClick={() => setScheduleDays((prev) => (prev.includes(day.value) ? prev.filter((d) => d !== day.value) : [...prev, day.value]))}
+                        className={cx('rounded-full border px-3 py-1.5 text-xs transition-colors', active ? 'border-violet-500/40 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200')}
                       >
                         {day.label}
                       </button>
@@ -204,20 +144,10 @@ function AddSourceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
             </div>
           </div>
         </div>
-        
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => mutation.mutate()}
-            disabled={!url || mutation.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-          >
-            {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+        <div className="flex justify-end gap-3 border-t border-slate-800 px-6 py-4">
+          <button onClick={onClose} className="rounded-xl px-4 py-2 text-slate-300 hover:bg-slate-800">Cancel</button>
+          <button onClick={() => mutation.mutate()} disabled={!url || mutation.isPending} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
+            {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Add Source
           </button>
         </div>
@@ -228,16 +158,15 @@ function AddSourceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess
 
 export default function SourcesPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
-  const [alertToasts, setAlertToasts] = useState<{ id: string; message: string; type: 'failure' | 'stale'; sourceId: number }[]>([])
   const [importMessage, setImportMessage] = useState<string | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
-  const alertSeenRef = useRef<Set<string>>(new Set())
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const queryClient = useQueryClient()
-  
+  const [toast, setToast] = useState<string | null>(null)
+
   const { data, isLoading, error } = useQuery<{ items: Source[]; total: number }>({
     queryKey: ['sources'],
     queryFn: api.sources.list,
@@ -248,87 +177,14 @@ export default function SourcesPage() {
     queryFn: api.stats.health,
     refetchInterval: 15000,
   })
-  
-  const scanMutation = useMutation({
-    mutationFn: (id: number) => api.sources.scan(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
-  })
-  
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.sources.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
-  })
 
-  const importMutation = useMutation({
-    mutationFn: (file: File) => importSources(file),
-    onMutate: () => {
-      setImportMessage(null)
-      setImportError(null)
-    },
-    onSuccess: async (result) => {
-      setImportMessage(`Imported ${result.imported}, skipped ${result.skipped}`)
-      if (result.errors.length > 0) {
-        setImportError(result.errors[0].reason)
-      }
-      await queryClient.invalidateQueries({ queryKey: ['sources'] })
-    },
-    onError: (error: Error) => {
-      setImportError(error.message)
-    },
-  })
-
-  const sources = data?.items || []
-  const sourceIdsKey = useMemo(() => sources.map((source) => source.id).join(','), [sources])
-
-  const enqueueToast = useCallback((toast: { id: string; message: string; type: 'failure' | 'stale'; sourceId: number }) => {
-    setAlertToasts((prev) => [...prev, toast])
-    setTimeout(() => {
-      setAlertToasts((prev) => prev.filter((t) => t.id !== toast.id))
-    }, 6000)
-  }, [])
-
-  useEffect(() => {
-    sources.forEach((source) => {
-      const failureStreak = source.failure_streak ?? 0
-      if (source.status === 'failed' || failureStreak > 0) {
-        const key = `failure-${source.id}-${failureStreak}`
-        if (!alertSeenRef.current.has(key)) {
-          alertSeenRef.current.add(key)
-          enqueueToast({
-            id: key,
-            sourceId: source.id,
-            type: 'failure',
-            message: `${source.name || source.domain} failed ${failureStreak || 1}x in a row`,
-          })
-        }
-      }
-
-      if (source.status_message && source.status_message.toLowerCase().startsWith('stale')) {
-        const key = `stale-${source.id}-${source.status_message}`
-        if (!alertSeenRef.current.has(key)) {
-          alertSeenRef.current.add(key)
-          enqueueToast({
-            id: key,
-            sourceId: source.id,
-            type: 'stale',
-            message: `${source.name || source.domain} is stale (${source.status_message})`,
-          })
-        }
-      }
-    })
-  }, [sources, enqueueToast])
-
+  const sources = data?.items ?? []
   const alertingSources = useMemo(
-    () =>
-      sources.filter((source) => {
-        const failureStreak = source.failure_streak ?? 0
-        const stale = source.status_message?.toLowerCase().startsWith('stale')
-        return source.status === 'failed' || failureStreak > 0 || stale
-      }),
+    () => sources.filter((source) => source.status === 'failed' || (source.failure_streak ?? 0) > 0 || source.status_message?.toLowerCase().startsWith('stale')),
     [sources],
   )
-
   const alertingIds = useMemo(() => new Set(alertingSources.map((source) => source.id)), [alertingSources])
+  const allSelected = sources.length > 0 && selectedIds.size === sources.length
 
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -337,41 +193,42 @@ export default function SourcesPage() {
       sources.forEach((source) => {
         if (prev.has(source.id)) next.add(source.id)
       })
-      if (next.size === prev.size) {
-        return prev
-      }
-      return next
+      return next.size === prev.size ? prev : next
     })
-  }, [sourceIdsKey])
+  }, [sources])
 
-  const toggleSelect = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }
-
-  const allSelected = sources.length > 0 && selectedIds.size === sources.length
-  const toggleSelectAll = () => {
-    setSelectedIds(() => {
-      if (allSelected) return new Set()
-      return new Set(sources.map((source) => source.id))
-    })
-  }
+  const scanMutation = useMutation({
+    mutationFn: (id: number) => api.sources.scan(id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+      setToast('Scan started')
+      setTimeout(() => setToast(null), 2500)
+    },
+  })
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.sources.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
+  })
+  const importMutation = useMutation({
+    mutationFn: (file: File) => importSources(file),
+    onMutate: () => {
+      setImportMessage(null)
+      setImportError(null)
+    },
+    onSuccess: async (result) => {
+      setImportMessage(`Imported ${result.imported}, skipped ${result.skipped}`)
+      if (result.errors.length) setImportError(result.errors[0].reason)
+      await queryClient.invalidateQueries({ queryKey: ['sources'] })
+    },
+    onError: (err: Error) => setImportError(err.message),
+  })
 
   const runBulk = async (action: (id: number) => Promise<unknown>) => {
     const ids = Array.from(selectedIds)
     if (!ids.length) return
     setBulkLoading(true)
     try {
-      for (const id of ids) {
-        await action(id)
-      }
+      for (const id of ids) await action(id)
       await queryClient.invalidateQueries({ queryKey: ['sources'] })
       setSelectedIds(new Set())
     } finally {
@@ -379,70 +236,24 @@ export default function SourcesPage() {
     }
   }
 
-  const handleBulkScan = () => runBulk((id) => api.sources.scan(id))
-  const handleBulkPause = () => runBulk((id) => api.sources.update(id, { active: false }))
-  const handleBulkResume = () => runBulk((id) => api.sources.update(id, { active: true }))
-  const handleBulkDelete = () => {
-    if (!selectedIds.size) return
-    if (!window.confirm('Delete selected sources? This cannot be undone.')) return
-    runBulk((id) => api.sources.delete(id))
-  }
-  
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-      </div>
-    )
-  }
-  
-  if (error) {
-    return (
-      <div className="bg-red-50 text-red-700 p-4 rounded-lg">
-        Failed to load sources: {(error as Error).message}
-      </div>
-    )
-  }
-  
-  const selectedCount = selectedIds.size
-  const formatRetryEta = (nextRetry?: string | null) => {
-    if (!nextRetry) return null
-    return formatDistanceToNow(new Date(nextRetry), { addSuffix: true })
-  }
+  if (isLoading) return <LoadingState label="Loading sources" />
+  if (error) return <div className="rounded-3xl border border-rose-500/30 bg-rose-950/40 p-4 text-rose-200">Failed to load sources: {(error as Error).message}</div>
 
   return (
-    <div>
-      {alertToasts.length > 0 && (
-        <div className="fixed top-20 right-6 z-30 space-y-2">
-          {alertToasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm shadow-lg backdrop-blur ${
-                toast.type === 'failure'
-                  ? 'border-red-500/40 bg-red-900/70 text-red-100'
-                  : 'border-amber-400/40 bg-amber-900/70 text-amber-100'
-              }`}
-            >
-              <Bell className="w-4 h-4" />
-              <span>{toast.message}</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="space-y-6">
+      {toast && <div className="fixed bottom-6 right-6 z-30 rounded-2xl border border-violet-500/30 bg-slate-900/95 px-4 py-3 text-sm text-slate-100 shadow-xl shadow-black/30">{toast}</div>}
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Sources</h1>
-          <p className="text-gray-400 mt-1">Manage websites to track for filament and resin prices</p>
-          {importMessage && <p className="text-sm text-green-400 mt-2">{importMessage}</p>}
-          {importError && <p className="text-sm text-red-400 mt-1">{importError}</p>}
+          <p className="text-[11px] uppercase tracking-[0.32em] text-slate-500">Monitoring</p>
+          <h1 className="mt-1 text-3xl font-semibold text-slate-100">Sources</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">Manage tracked retailers, inspect scrape health, and keep import/export operations clean.</p>
+          {importMessage && <p className="mt-3 text-sm text-emerald-300">{importMessage}</p>}
+          {importError && <p className="mt-1 text-sm text-rose-300">{importError}</p>}
         </div>
-        <div className="flex items-center gap-3">
-          <a
-            href={getSourcesExportUrl()}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 transition-colors"
-          >
-            <Download className="w-5 h-5" />
+        <div className="flex flex-wrap items-center gap-3">
+          <a href={getSourcesExportUrl()} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800">
+            <Download className="h-4 w-4" />
             Export JSON
           </a>
           <input
@@ -457,302 +268,192 @@ export default function SourcesPage() {
               event.target.value = ''
             }}
           />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50"
-          >
-            <Upload className="w-5 h-5" />
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={importMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
+            <Upload className="h-4 w-4" />
             {importMutation.isPending ? 'Importing...' : 'Import JSON'}
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="w-5 h-5" />
+          <button onClick={() => setShowAddModal(true)} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500">
+            <Plus className="h-4 w-4" />
             Add Source
           </button>
         </div>
       </div>
 
-      {alertingSources.length > 0 && (
-        <div className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-900/20 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 font-semibold">
-            <AlertTriangle className="w-4 h-4" />
-            {alertingSources.length} source{alertingSources.length > 1 ? 's' : ''} need attention
-          </div>
-          <div className="text-amber-200/80 flex gap-3 flex-wrap text-xs">
-            <span>
-              {alertingSources.filter((s) => (s.failure_streak ?? 0) > 0 || s.status === 'failed').length} with failures
-            </span>
-            <span>
-              {alertingSources.filter((s) => s.status_message?.toLowerCase().startsWith('stale')).length} stale
-            </span>
-          </div>
-        </div>
-      )}
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Tracked sources" value={sources.length.toLocaleString()} sublabel={`${alertingSources.length} need attention`} tone="violet" />
+        <MetricCard label="Healthy" value={sources.filter((source) => source.status === 'completed').length.toLocaleString()} sublabel="Last successful scrapes" tone="emerald" />
+        <MetricCard label="Failures" value={sources.filter((source) => source.status === 'failed' || (source.failure_streak ?? 0) > 0).length.toLocaleString()} sublabel="Requires follow-up" tone="rose" />
+      </div>
 
       {healthData && (
-        <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex items-center gap-2 text-slate-200">
-            <span className={`h-2.5 w-2.5 rounded-full ${healthData.worker.status === 'active' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-            {healthData.worker.status === 'active'
-              ? `${healthData.worker.active_crawls} crawl(s) running`
-              : 'Worker idle'}
+        <SectionCard eyebrow="System" title="Worker status" description="Live crawler state and recent scan activity.">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <StatusDot tone={healthData.worker.status === 'active' ? 'emerald' : 'amber'} />
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Worker</p>
+                <p className="text-sm text-slate-100">{healthData.worker.status === 'active' ? `${healthData.worker.active_crawls} crawl(s) running` : 'Idle'}</p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Last scan</p>
+              <p className="mt-1 text-sm text-slate-100">{healthData.latest_scan_at ? formatDistanceToNow(new Date(healthData.latest_scan_at), { addSuffix: true }) : 'Never'}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Migrations</p>
+              <p className="mt-1 text-sm text-slate-100">{healthData.migrations.pending > 0 ? `${healthData.migrations.pending} pending` : 'Up to date'}</p>
+            </div>
           </div>
-          <div className="text-xs text-slate-400">
-            Last scan {healthData.latest_scan_at ? formatDistanceToNow(new Date(healthData.latest_scan_at), { addSuffix: true }) : 'never'}
+        </SectionCard>
+      )}
+
+      {alertingSources.length > 0 && (
+        <div className="rounded-3xl border border-amber-400/20 bg-amber-950/20 p-4 text-sm text-amber-100">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4" />
+            {alertingSources.length} source{alertingSources.length > 1 ? 's' : ''} need attention
+          </div>
+          <div className="mt-1 text-xs text-amber-200/80">
+            {alertingSources.filter((s) => (s.failure_streak ?? 0) > 0 || s.status === 'failed').length} with failures, {alertingSources.filter((s) => s.status_message?.toLowerCase().startsWith('stale')).length} stale
           </div>
         </div>
       )}
 
-      {selectedCount > 0 && (
-        <div className="mb-4 rounded-2xl border border-blue-900/60 bg-blue-950/30 p-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-blue-100 font-semibold">
-            {selectedCount} source{selectedCount > 1 ? 's' : ''} selected
-          </div>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <button
-              onClick={handleBulkScan}
-              disabled={bulkLoading}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Run scans
-            </button>
-            <button
-              onClick={handleBulkPause}
-              disabled={bulkLoading}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-amber-500/50 text-amber-200 hover:bg-amber-500/10 disabled:opacity-50"
-            >
-              <Pause className="w-4 h-4" />
-              Pause
-            </button>
-            <button
-              onClick={handleBulkResume}
-              disabled={bulkLoading}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-emerald-500/50 text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
-            >
-              <Play className="w-4 h-4" />
-              Resume
-            </button>
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkLoading}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-red-500/50 text-red-200 hover:bg-red-500/10 disabled:opacity-50"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete
-            </button>
+      {selectedIds.size > 0 && (
+        <div className="rounded-3xl border border-violet-500/20 bg-violet-950/25 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-violet-100">{selectedIds.size} source{selectedIds.size > 1 ? 's' : ''} selected</div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => runBulk((id) => api.sources.scan(id))} disabled={bulkLoading} className="inline-flex items-center gap-1 rounded-full bg-violet-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"><RefreshCw className="h-4 w-4" />Run scans</button>
+              <button onClick={() => runBulk((id) => api.sources.update(id, { active: false }))} disabled={bulkLoading} className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 px-3 py-1.5 text-sm text-amber-200 disabled:opacity-50"><Pause className="h-4 w-4" />Pause</button>
+              <button onClick={() => runBulk((id) => api.sources.update(id, { active: true }))} disabled={bulkLoading} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 px-3 py-1.5 text-sm text-emerald-200 disabled:opacity-50"><Play className="h-4 w-4" />Resume</button>
+              <button
+                onClick={() => {
+                  if (!window.confirm('Delete selected sources? This cannot be undone.')) return
+                  runBulk((id) => api.sources.delete(id))
+                }}
+                disabled={bulkLoading}
+                className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 px-3 py-1.5 text-sm text-rose-200 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
-      
+
       {sources.length === 0 ? (
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
-          <p className="text-gray-400 mb-4">No sources added yet</p>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="text-blue-400 hover:text-blue-300 font-medium"
-          >
-            Add your first source
-          </button>
-        </div>
-      ) : (
-        <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-900 border-b border-gray-700">
-              <tr>
-                <th className="px-3 w-10">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all sources"
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-800"
-                    checked={allSelected}
-                    onChange={toggleSelectAll}
-                  />
-                </th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Source</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Status</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Products</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Scraped</th>
-                <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Last Scan</th>
-                <th className="text-right px-4 py-3 text-sm font-medium text-gray-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {sources.map((source: Source) => {
-                const isSelected = selectedIds.has(source.id)
-                const latestRun = source.latest_run
-                const successPercent = source.success_rate_24h !== null && source.success_rate_24h !== undefined
-                  ? Math.round(source.success_rate_24h * 100)
-                  : null
-                const hasAlert = alertingIds.has(source.id)
-                const failureStreak = source.failure_streak ?? 0
-                const retryEta = formatRetryEta(source.next_retry_at)
-                return (
-                  <tr
-                    key={source.id}
-                    className={`hover:bg-gray-700/50 ${isSelected ? 'bg-blue-900/20' : ''} ${hasAlert ? 'bg-red-900/10' : ''}`}
-                  >
-                    <td className="px-3">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${source.name || source.domain}`}
-                        className="h-4 w-4 rounded border-gray-600 bg-gray-800"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(source.id)}
-                      />
-                    </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      <div className="font-medium text-gray-100">{source.name || source.domain}</div>
-                      <a
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-gray-400 hover:text-blue-400 flex items-center gap-1"
-                      >
-                        {source.domain}
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={source.status} />
-                    {healthData && (
-                      <div className="mt-1 flex items-center gap-2 text-xxs text-gray-500">
-                        <span className={`h-2 w-2 rounded-full ${healthData.worker.status === 'active' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                        {healthData.worker.status === 'active'
-                          ? `Crawler busy (${healthData.worker.active_crawls})`
-                          : 'Crawler idle'}
-                      </div>
-                    )}
-                    {latestRun && (
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-900/50 border border-gray-700 text-gray-200"
-                          title={`Last run started ${latestRun.started_at ? formatDistanceToNow(new Date(latestRun.started_at), { addSuffix: true }) : 'unknown'}`}
-                        >
-                          <Clock className="w-3 h-3" />
-                          {formatDuration(latestRun.duration_seconds)}
-                        </span>
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${latestRun.errors_count > 0 ? 'border-red-600 text-red-300 bg-red-900/40' : 'border-emerald-700 text-emerald-200 bg-emerald-900/30'}`}
-                          title="Errors detected during last run"
-                        >
-                          {latestRun.errors_count > 0 ? <AlertTriangle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
-                          {latestRun.errors_count} err
-                        </span>
-                        {successPercent !== null && (
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-blue-700 text-blue-200 bg-blue-900/30"
-                            title="Success rate across the last 24h"
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            {successPercent}%
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {source.status_message && (
-                      <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-900/30 px-2 py-0.5 text-xs text-amber-100">
-                        <AlertTriangle className="w-3 h-3" />
-                        <span>{source.status_message}</span>
-                      </div>
-                    )}
-                    {failureStreak > 0 && (
-                      <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-900/30 px-2 py-0.5 text-xs text-red-100">
-                        <XCircle className="w-3 h-3" />
-                        <span>{failureStreak} consecutive fail{failureStreak > 1 ? 's' : ''}</span>
-                      </div>
-                    )}
-                    {retryEta && (
-                      <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue-500/40 bg-blue-900/30 px-2 py-0.5 text-xs text-blue-100">
-                        <Clock className="w-3 h-3" />
-                        <span>Retry {retryEta}</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">
-                    {source.product_count}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-0.5 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 w-8" title="Products scraped in the last 1 hour">1h:</span>
-                        <span className={source.scrape_stats?.last_1h > 0 ? 'text-green-400' : 'text-gray-500'}>
-                          {source.scrape_stats?.last_1h || 0}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 w-8" title="Products scraped in the last 12 hours">12h:</span>
-                        <span className={source.scrape_stats?.last_12h > 0 ? 'text-blue-400' : 'text-gray-500'}>
-                          {source.scrape_stats?.last_12h || 0}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 w-8" title="Products scraped in the last 24 hours">24h:</span>
-                        <span className={source.scrape_stats?.last_24h > 0 ? 'text-purple-400' : 'text-gray-500'}>
-                          {source.scrape_stats?.last_24h || 0}
-                        </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400 text-sm">
-                    {source.last_scan_at
-                      ? formatDistanceToNow(new Date(source.last_scan_at), { addSuffix: true })
-                      : 'Never'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => navigate(`/shipping?source=${source.id}`)}
-                        className="p-2 text-gray-400 hover:text-emerald-300 hover:bg-emerald-900/40 rounded-lg transition-colors"
-                        title="Adjust shipping fee"
-                      >
-                        <Ship className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => scanMutation.mutate(source.id)}
-                        disabled={source.status === 'scanning' || scanMutation.isPending}
-                        className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-900/50 rounded-lg transition-colors disabled:opacity-50"
-                        title="Run scan"
-                      >
-                        {source.status === 'scanning' ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Play className="w-4 h-4" />
-                        )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm('Are you sure you want to delete this source?')) {
-                            deleteMutation.mutate(source.id)
-                          }
-                        }}
-                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-900/50 rounded-lg transition-colors"
-                        title="Delete source"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      
-      {showAddModal && (
-        <AddSourceModal
-          onClose={() => setShowAddModal(false)}
-          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['sources'] })}
+        <EmptyState
+          icon={Ship}
+          title="No sources added yet"
+          description="Add your first retailer source to start tracking filament and resin prices."
+          action={<button onClick={() => setShowAddModal(true)} className="rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500">Add your first source</button>}
         />
+      ) : (
+        <SectionCard eyebrow="Source inventory" title="Tracked sites" description="Hover rows for subtle actions and use the menu for less clutter.">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-[11px] uppercase tracking-[0.28em] text-slate-500">
+                <tr>
+                  <th className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-950"
+                      checked={allSelected}
+                      onChange={() => setSelectedIds(() => (allSelected ? new Set() : new Set(sources.map((source) => source.id))))}
+                    />
+                  </th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Health</th>
+                  <th className="px-4 py-3">Products</th>
+                  <th className="px-4 py-3">Trend</th>
+                  <th className="px-4 py-3">Last scan</th>
+                  <th className="px-4 py-3">Last successful</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80">
+                {sources.map((source) => {
+                  const isSelected = selectedIds.has(source.id)
+                  const trend = [
+                    source.scrape_stats?.last_1h ?? 0,
+                    source.scrape_stats?.last_12h ?? 0,
+                    source.scrape_stats?.last_24h ?? 0,
+                    Math.round((source.success_rate_24h ?? 0) * 100),
+                  ]
+                  const lastSuccessful = source.latest_run?.status === 'completed' && source.latest_run.finished_at
+                    ? formatDistanceToNow(new Date(source.latest_run.finished_at), { addSuffix: true })
+                    : source.last_scan_at
+                    ? formatDistanceToNow(new Date(source.last_scan_at), { addSuffix: true })
+                    : 'Never'
+                  const retryEta = source.next_retry_at ? formatDistanceToNow(new Date(source.next_retry_at), { addSuffix: true }) : null
+                  return (
+                    <tr key={source.id} className={cx('border-l-2 border-transparent transition-colors hover:bg-slate-900/70', isSelected && 'bg-violet-950/25 border-violet-500', alertingIds.has(source.id) && 'bg-rose-950/15')}>
+                      <td className="px-3 py-4">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-600 bg-slate-950"
+                          checked={isSelected}
+                          onChange={() =>
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(source.id)) next.delete(source.id)
+                              else next.add(source.id)
+                              return next
+                            })
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-medium text-slate-100">{source.name || source.domain}</div>
+                        <a href={source.url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-violet-300">
+                          {source.domain}
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <StatusDot tone={source.status === 'failed' || (source.failure_streak ?? 0) > 0 ? 'rose' : source.status_message?.toLowerCase().startsWith('stale') ? 'amber' : 'emerald'} />
+                          <div>
+                            <StatusBadge status={source.status} />
+                            {source.status_message && <div className="mt-2 text-xs text-slate-500">{source.status_message}</div>}
+                            {retryEta && <div className="mt-1 text-xs text-violet-200">Retry {retryEta}</div>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-slate-200">{source.product_count.toLocaleString()}</td>
+                      <td className="px-4 py-4 text-violet-300"><MiniSparkline values={trend} /></td>
+                      <td className="px-4 py-4 text-slate-400">{source.last_scan_at ? formatDistanceToNow(new Date(source.last_scan_at), { addSuffix: true }) : 'Never'}</td>
+                      <td className="px-4 py-4 text-slate-400">{lastSuccessful}</td>
+                      <td className="px-4 py-4 text-right">
+                        <ActionMenu label={<MoreVertical className="h-4 w-4" />}>
+                          <div className="flex flex-col text-left">
+                            <button onClick={() => navigate(`/shipping?source=${source.id}`)} className="flex items-center gap-2 px-4 py-3 text-sm text-slate-200 hover:bg-slate-900">
+                              <Ship className="h-4 w-4 text-emerald-300" />
+                              Shipping
+                            </button>
+                            <button onClick={() => scanMutation.mutate(source.id)} disabled={source.status === 'scanning' || scanMutation.isPending} className="flex items-center gap-2 px-4 py-3 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-50">
+                              {source.status === 'scanning' ? <Loader2 className="h-4 w-4 animate-spin text-sky-300" /> : <Play className="h-4 w-4 text-sky-300" />}
+                              Scan now
+                            </button>
+                            <button onClick={() => { if (window.confirm('Delete this source?')) deleteMutation.mutate(source.id) }} className="flex items-center gap-2 px-4 py-3 text-sm text-slate-200 hover:bg-slate-900">
+                              <Trash2 className="h-4 w-4 text-rose-300" />
+                              Delete
+                            </button>
+                          </div>
+                        </ActionMenu>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
       )}
+
+      {showAddModal && <AddSourceModal onClose={() => setShowAddModal(false)} onSuccess={() => queryClient.invalidateQueries({ queryKey: ['sources'] })} />}
     </div>
   )
 }

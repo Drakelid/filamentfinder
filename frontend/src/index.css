@@ -2,6 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --ff-shell-950: 4 10 24;
+    --ff-shell-900: 11 15 26;
+    --ff-shell-800: 15 23 42;
+    --ff-shell-700: 30 41 59;
+    --ff-brand-violet: 139 92 246;
+    --ff-brand-amber: 251 191 36;
+    --ff-brand-cyan: 34 211 238;
+    --ff-ink-50: 248 250 252;
+    --ff-ink-200: 226 232 240;
+    --ff-ink-300: 203 213 225;
+    --ff-ink-400: 148 163 184;
+    --ff-ink-500: 100 116 139;
+    --ff-ink-700: 51 65 85;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply min-h-screen bg-shell-900 text-ink-200 antialiased font-sans;
+    font-size: 15px;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: rgb(var(--ff-brand-violet) / 0.28);
+    color: rgb(var(--ff-ink-50));
+  }
+}
+
 body {
-  @apply bg-gray-900 text-gray-100;
+  background:
+    radial-gradient(circle at top left, rgb(var(--ff-brand-violet) / 0.12), transparent 28%),
+    radial-gradient(circle at 80% 10%, rgb(var(--ff-brand-amber) / 0.09), transparent 24%),
+    linear-gradient(180deg, rgb(var(--ff-shell-950)), rgb(var(--ff-shell-900)));
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hidden {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
 }

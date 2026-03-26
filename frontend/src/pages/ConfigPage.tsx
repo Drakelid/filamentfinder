@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Settings, Shield, Eye, EyeOff, Save, TestTube, Loader2, CheckCircle, XCircle, Upload } from 'lucide-react'
+import { CheckCircle, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
 import { api, uploadWireguardConfig, VPNConfig, VPNStatus, WireGuardConfigUploadResult } from '../api'
+import { LoadingState, SectionCard, TabStrip, cx } from '../components/admin/AdminUI'
+
+const TABS = ['VPN & Proxy', 'Crawler Settings', 'Notifications', 'Data Management']
 
 export default function ConfigPage() {
   const [vpnConfig, setVpnConfig] = useState<VPNConfig | null>(null)
@@ -17,6 +20,7 @@ export default function ConfigPage() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState(TABS[0])
   const wireguardInputRef = useRef<HTMLInputElement | null>(null)
 
   const vpnConfigQuery = useQuery<VPNConfig>({
@@ -42,18 +46,10 @@ export default function ConfigPage() {
         enabled: boolean
         auto_rotate: boolean
         rotate_interval_minutes: number
-      } = {
-        enabled,
-        auto_rotate: autoRotate,
-        rotate_interval_minutes: rotateInterval,
-      }
+      } = { enabled, auto_rotate: autoRotate, rotate_interval_minutes: rotateInterval }
 
-      if (!vpnConfig?.gluetun_mode && accountNumber.trim()) {
-        payload.account_number = accountNumber.trim()
-      }
-      if (socksProxy.trim()) {
-        payload.socks_proxy = socksProxy.trim()
-      }
+      if (!vpnConfig?.gluetun_mode && accountNumber.trim()) payload.account_number = accountNumber.trim()
+      if (socksProxy.trim()) payload.socks_proxy = socksProxy.trim()
 
       return api.config.updateVpn(payload)
     },
@@ -63,7 +59,7 @@ export default function ConfigPage() {
       setSaveSuccess(false)
       setUploadSuccess(null)
     },
-    onSuccess: (data: VPNConfig) => {
+    onSuccess: (data) => {
       setVpnConfig(data)
       setEnabled(data.enabled)
       setAutoRotate(data.auto_rotate)
@@ -73,12 +69,8 @@ export default function ConfigPage() {
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     },
-    onError: (err: Error) => {
-      setError(err.message)
-    },
-    onSettled: () => {
-      setSaving(false)
-    },
+    onError: (err: Error) => setError(err.message),
+    onSettled: () => setSaving(false),
   })
 
   const testMutation = useMutation<VPNStatus, Error, void>({
@@ -88,38 +80,24 @@ export default function ConfigPage() {
       setTestResult(null)
       setError(null)
     },
-    onSuccess: (data: VPNStatus) => {
-      setTestResult(data)
-    },
-    onError: (err: Error) => {
-      setError(err.message)
-    },
-    onSettled: () => {
-      setTesting(false)
-    },
+    onSuccess: (data) => setTestResult(data),
+    onError: (err: Error) => setError(err.message),
+    onSettled: () => setTesting(false),
   })
 
-  const wireguardUploadMutation = useMutation<WireGuardConfigUploadResult, Error, File[]>({
+  const uploadMutation = useMutation<WireGuardConfigUploadResult, Error, File[]>({
     mutationFn: uploadWireguardConfig,
     onMutate: () => {
       setError(null)
       setUploadSuccess(null)
     },
-    onSuccess: async (data: WireGuardConfigUploadResult) => {
+    onSuccess: async (data) => {
       const restartMessage = data.restarted ? 'Gluetun restarted automatically.' : `Gluetun restart failed: ${data.restart_error || 'unknown error'}`
       setUploadSuccess(`Uploaded ${data.file_names.length} config file(s). Active profile: ${data.active_file_name}. ${restartMessage}`)
       await vpnConfigQuery.refetch()
     },
-    onError: (err: Error) => {
-      setError(err.message)
-    },
+    onError: (err: Error) => setError(err.message),
   })
-
-  const loadError = vpnConfigQuery.isError
-    ? vpnConfigQuery.error instanceof Error
-      ? vpnConfigQuery.error.message
-      : 'Failed to load VPN configuration'
-    : null
 
   const configReady = !vpnConfigQuery.isLoading
   const displayedConfig: VPNConfig = vpnConfig ?? {
@@ -138,359 +116,212 @@ export default function ConfigPage() {
     current_server: null,
     current_ip: null,
   }
+
   const vpnConfigured = displayedConfig.enabled && (displayedConfig.proxy_configured || displayedConfig.gluetun_mode)
   const vpnVerified = testResult?.connected === true
 
-  if (vpnConfigQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    )
-  }
+  if (vpnConfigQuery.isLoading) return <LoadingState label="Loading configuration" />
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Settings className="w-8 h-8 text-blue-500" />
-        <h1 className="text-2xl font-bold text-gray-100">Configuration</h1>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.32em] text-slate-500">Administration</p>
+          <h1 className="mt-1 flex items-center gap-3 text-3xl font-semibold text-slate-100">
+            <Settings className="h-7 w-7 text-violet-300" />
+            Configuration
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">Split configuration by intent so VPN settings, crawler behavior, notifications, and data tasks stay easier to reason about.</p>
+        </div>
       </div>
 
-      {loadError && (
-        <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg flex items-center justify-between gap-4">
-          <span>{loadError}</span>
-          <button
-            type="button"
-            onClick={() => vpnConfigQuery.refetch()}
-            className="px-3 py-1 rounded-md bg-red-800/60 text-red-100 hover:bg-red-800"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      <TabStrip tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
-      {error && (
-        <div className="bg-red-900/50 border border-red-700 text-red-200 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-3xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{error}</div>}
+      {saveSuccess && <div className="rounded-3xl border border-emerald-500/20 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">Configuration saved successfully</div>}
+      {uploadSuccess && <div className="rounded-3xl border border-emerald-500/20 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">{uploadSuccess}</div>}
 
-      {saveSuccess && (
-        <div className="bg-green-900/50 border border-green-700 text-green-200 px-4 py-3 rounded-lg flex items-center gap-2">
-          <CheckCircle className="w-5 h-5" />
-          Configuration saved successfully
-        </div>
-      )}
-
-      {uploadSuccess && (
-        <div className="bg-green-900/50 border border-green-700 text-green-200 px-4 py-3 rounded-lg flex items-center gap-2">
-          <CheckCircle className="w-5 h-5" />
-          {uploadSuccess}
-        </div>
-      )}
-
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Shield className="w-6 h-6 text-purple-500" />
-          <h2 className="text-xl font-semibold text-gray-100">Mullvad VPN</h2>
-          {vpnVerified ? (
-            <span className="px-2 py-1 text-xs font-medium bg-green-900/50 text-green-400 rounded-full">
-              Verified
-            </span>
-          ) : vpnConfigured ? (
-            <span className="px-2 py-1 text-xs font-medium bg-blue-900/50 text-blue-300 rounded-full">
-              Configured
-            </span>
-          ) : null}
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              WireGuard Config File
-            </label>
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                ref={wireguardInputRef}
-                type="file"
-                accept=".conf"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const selectedFiles = Array.from(e.target.files ?? [])
-                  if (!selectedFiles.length) return
-                  wireguardUploadMutation.mutate(selectedFiles)
-                  e.currentTarget.value = ''
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => wireguardInputRef.current?.click()}
-                disabled={!configReady || wireguardUploadMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {wireguardUploadMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Upload className="w-4 h-4" />
-                )}
-                Upload .conf files
-              </button>
-              {displayedConfig.wireguard_file_configured && displayedConfig.wireguard_active_file_name && (
-                <span className="text-sm text-green-400">
-                  Active: {displayedConfig.wireguard_active_file_name}
-                  {displayedConfig.wireguard_uploaded_at ? ` uploaded ${new Date(displayedConfig.wireguard_uploaded_at).toLocaleString()}` : ''}
-                </span>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-gray-500">
-              Upload one or more Mullvad WireGuard config files. They are stored as reusable profiles, the first uploaded file becomes active immediately, and Gluetun is restarted automatically after upload.
-            </p>
-            {displayedConfig.wireguard_profile_count > 0 && (
-              <p className="mt-1 text-sm text-blue-300">
-                {displayedConfig.wireguard_profile_count} profile(s) available for automatic rotation.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Account Number
-            </label>
-            <div className="relative">
-              <input
-                type={showAccountNumber ? 'text' : 'password'}
-                value={accountNumber}
-                onChange={(e) => setAccountNumber(e.target.value)}
-                placeholder={
-                  displayedConfig.gluetun_mode
-                    ? 'Not used with Gluetun WireGuard mode'
-                    : displayedConfig.account_number_set
-                    ? '***************'
-                    : 'Enter your Mullvad account number'
-                }
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
-                disabled={!configReady || displayedConfig.gluetun_mode}
-              />
-              <button
-                type="button"
-                onClick={() => setShowAccountNumber(!showAccountNumber)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 disabled:opacity-50"
-                disabled={!configReady || displayedConfig.gluetun_mode}
-              >
-                {showAccountNumber ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-            <p className="mt-1 text-sm text-gray-500">
-              {displayedConfig.gluetun_mode ? (
-                'This deployment uses Gluetun + Mullvad WireGuard. The account number is not used here.'
-              ) : (
-                'Optional legacy field. For this deployment, uploading a Mullvad WireGuard config file is the preferred setup.'
-              )}
-            </p>
-            {displayedConfig.account_number_set && !displayedConfig.gluetun_mode && (
-              <p className="mt-1 text-sm text-green-500">
-                Account number is configured
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              SOCKS5 Proxy URL
-            </label>
-            <input
-              type="text"
-              value={socksProxy}
-              onChange={(e) => setSocksProxy(e.target.value)}
-              placeholder={displayedConfig.proxy_configured ? 'Configured in backend' : 'socks5://user:pass@host:1080'}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={!configReady}
-            />
-            <p className="mt-1 text-sm text-gray-500">
-              Required for crawler traffic. When VPN is enabled, the worker will only crawl through this SOCKS5 proxy.
-            </p>
-            {displayedConfig.proxy_configured && (
-              <p className="mt-1 text-sm text-green-500">
-                Proxy URL is configured
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <label className="block text-sm font-medium text-gray-300">
-                Enable VPN for Crawling
-              </label>
-              <p className="text-sm text-gray-500">
-                Route crawler traffic through Mullvad VPN
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setEnabled(!enabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                enabled ? 'bg-blue-600' : 'bg-gray-600'
-              }`}
-              disabled={!configReady}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  enabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <label className="block text-sm font-medium text-gray-300">
-                Auto-Rotate Servers
-              </label>
-              <p className="text-sm text-gray-500">
-                Automatically switch VPN servers periodically
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAutoRotate(!autoRotate)}
-              disabled={!enabled || !configReady}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                autoRotate && enabled ? 'bg-blue-600' : 'bg-gray-600'
-              } ${!enabled || !configReady ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  autoRotate ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Rotation Interval (minutes)
-            </label>
-            <input
-              type="number"
-              value={rotateInterval}
-              onChange={(e) => setRotateInterval(parseInt(e.target.value, 10) || 30)}
-              min={5}
-              max={1440}
-              disabled={!enabled || !autoRotate || !configReady}
-              className={`w-32 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                !enabled || !autoRotate || !configReady ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            />
-            <p className="mt-1 text-sm text-gray-500">
-              How often to switch to a new VPN server (5-1440 minutes)
-            </p>
-          </div>
-
-          <div className="bg-gray-700/50 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-300 mb-2">Current Status</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-500">Connection:</span>{' '}
-                <span className={vpnVerified ? 'text-green-400' : vpnConfigured ? 'text-blue-300' : 'text-yellow-400'}>
-                  {vpnVerified ? 'Verified by test' : vpnConfigured ? 'Configured, not verified' : (enabled ? 'Proxy Not Configured' : 'Disabled')}
-                </span>
-              </div>
-              {displayedConfig.current_server && (
-                <div>
-                  <span className="text-gray-500">Server:</span>{' '}
-                  <span className="text-gray-300">{displayedConfig.current_server}</span>
+      {activeTab === 'VPN & Proxy' && (
+        <div className="grid gap-6 lg:grid-cols-[1.2fr,0.8fr]">
+          <SectionCard eyebrow="VPN" title="Mullvad VPN" description="Upload WireGuard profiles, set a legacy account number if needed, and test the live route." action={<span className={cx('rounded-full px-3 py-1 text-xs font-medium', vpnVerified ? 'bg-emerald-500/15 text-emerald-200' : vpnConfigured ? 'bg-sky-500/15 text-sky-200' : 'bg-amber-500/15 text-amber-200')}>{vpnVerified ? 'Verified' : vpnConfigured ? 'Configured' : 'Not configured'}</span>}>
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4">
+                <label className="block text-sm font-medium text-slate-300">WireGuard config files</label>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <input
+                    ref={wireguardInputRef}
+                    type="file"
+                    accept=".conf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const selectedFiles = Array.from(e.target.files ?? [])
+                      if (!selectedFiles.length) return
+                      uploadMutation.mutate(selectedFiles)
+                      e.currentTarget.value = ''
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => wireguardInputRef.current?.click()}
+                    disabled={!configReady || uploadMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                  >
+                    {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                    Upload .conf files
+                  </button>
+                  {displayedConfig.wireguard_file_configured && displayedConfig.wireguard_active_file_name && (
+                    <span className="text-sm text-emerald-300">
+                      Active: {displayedConfig.wireguard_active_file_name}
+                      {displayedConfig.wireguard_uploaded_at ? ` uploaded ${new Date(displayedConfig.wireguard_uploaded_at).toLocaleString()}` : ''}
+                    </span>
+                  )}
                 </div>
-              )}
-              {displayedConfig.current_ip && (
-                <div>
-                  <span className="text-gray-500">IP:</span>{' '}
-                  <span className="text-gray-300">{displayedConfig.current_ip}</span>
+                <p className="mt-2 text-sm text-slate-500">Uploaded profiles are stored and reused for automatic rotation. Gluetun restarts after upload.</p>
+                {displayedConfig.wireguard_profile_count > 0 && <p className="mt-2 text-sm text-violet-200">{displayedConfig.wireguard_profile_count} profile(s) available for rotation.</p>}
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Account number</span>
+                  <div className="relative">
+                    <input
+                      type={showAccountNumber ? 'text' : 'password'}
+                      value={accountNumber}
+                      onChange={(e) => setAccountNumber(e.target.value)}
+                      placeholder={displayedConfig.gluetun_mode ? 'Not used with Gluetun WireGuard mode' : displayedConfig.account_number_set ? '***************' : 'Enter your Mullvad account number'}
+                      disabled={!configReady || displayedConfig.gluetun_mode}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 pr-11 text-slate-100 placeholder-slate-500 disabled:opacity-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAccountNumber((prev) => !prev)}
+                      disabled={!configReady || displayedConfig.gluetun_mode}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                    >
+                      {showAccountNumber ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">SOCKS5 proxy URL</span>
+                  <input
+                    type="text"
+                    value={socksProxy}
+                    onChange={(e) => setSocksProxy(e.target.value)}
+                    placeholder={displayedConfig.proxy_configured ? 'Configured in backend' : 'socks5://user:pass@host:1080'}
+                    disabled={!configReady}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder-slate-500 disabled:opacity-50"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between rounded-3xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">Enable VPN for Crawling</p>
+                    <p className="text-sm text-slate-500">Route crawler traffic through the configured proxy.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEnabled(!enabled)}
+                    disabled={!configReady}
+                    className={cx('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', enabled ? 'bg-violet-600' : 'bg-slate-700', !configReady && 'opacity-50')}
+                  >
+                    <span className={cx('inline-block h-4 w-4 transform rounded-full bg-white transition-transform', enabled ? 'translate-x-6' : 'translate-x-1')} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between rounded-3xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">Auto-Rotate Servers</p>
+                    <p className="text-sm text-slate-500">Automatically switch VPN servers periodically.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoRotate(!autoRotate)}
+                    disabled={!enabled || !configReady}
+                    className={cx('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', autoRotate && enabled ? 'bg-violet-600' : 'bg-slate-700', (!enabled || !configReady) && 'opacity-50')}
+                  >
+                    <span className={cx('inline-block h-4 w-4 transform rounded-full bg-white transition-transform', autoRotate ? 'translate-x-6' : 'translate-x-1')} />
+                  </button>
+                </div>
+              </div>
+
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-slate-300">Rotation interval (minutes)</span>
+                <input
+                  type="number"
+                  value={rotateInterval}
+                  onChange={(e) => setRotateInterval(parseInt(e.target.value, 10) || 30)}
+                  min={5}
+                  max={1440}
+                  disabled={!enabled || !autoRotate || !configReady}
+                  className="w-40 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 disabled:opacity-50"
+                />
+              </label>
+
+              <div className="flex flex-wrap gap-3 border-t border-slate-800 pt-4">
+                <button onClick={() => saveMutation.mutate()} disabled={saving || !configReady} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500 disabled:opacity-50">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save configuration
+                </button>
+                <button onClick={() => testMutation.mutate()} disabled={testing || !configReady} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50">
+                  {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <TestTube className="h-4 w-4" />}
+                  Test connection
+                </button>
+              </div>
+
+              {testResult && (
+                <div className={cx('rounded-3xl border p-4', testResult.connected ? 'border-emerald-500/20 bg-emerald-950/30' : 'border-rose-500/20 bg-rose-950/30')}>
+                  <div className="flex items-center gap-2">
+                    {testResult.connected ? <CheckCircle className="h-5 w-5 text-emerald-300" /> : <XCircle className="h-5 w-5 text-rose-300" />}
+                    <h3 className="text-sm font-medium text-slate-200">Test Result</h3>
+                  </div>
+                  <p className={cx('mt-2 text-sm', testResult.connected ? 'text-emerald-200' : 'text-rose-200')}>{testResult.connected ? 'Connection test succeeded' : 'Connection test failed'}</p>
+                  {testResult.ip && <p className="mt-1 text-sm text-slate-400">IP {testResult.ip}{testResult.country ? ` (${testResult.country})` : ''}</p>}
+                  {testResult.mullvad_exit_ip && <p className="mt-1 text-sm text-emerald-300">Mullvad exit IP detected</p>}
+                  {testResult.error && <p className="mt-1 text-sm text-rose-300">{testResult.error}</p>}
                 </div>
               )}
             </div>
-            {!vpnConfigured && (
-              <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-sm text-yellow-300">
-                <p className="font-medium">VPN routing requires a SOCKS5 proxy URL:</p>
-                <ol className="list-decimal list-inside mt-1 text-yellow-400 space-y-1">
-                  <li>Set a SOCKS5 URL in this page or in <code className="bg-gray-800 px-1 rounded">.env</code></li>
-                  <li>Use <code className="bg-gray-800 px-1 rounded">MULLVAD_SOCKS_PROXY=socks5://user:pass@host:1080</code></li>
-                  <li>Restart containers after changing environment-based proxy settings</li>
-                </ol>
-              </div>
-            )}
-            {vpnConfigured && !vpnVerified && (
-              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-700 rounded text-sm text-blue-200">
-                Configuration is present, but the live VPN path is only confirmed after <span className="font-medium">Test Connection</span> succeeds.
-              </div>
-            )}
-          </div>
+          </SectionCard>
 
-          {testResult && (
-            <div className={`rounded-lg p-4 ${testResult.connected ? 'bg-green-900/30 border border-green-700' : 'bg-red-900/30 border border-red-700'}`}>
-              <div className="flex items-center gap-2 mb-2">
-                {testResult.connected ? (
-                  <CheckCircle className="w-5 h-5 text-green-400" />
-                ) : (
-                  <XCircle className="w-5 h-5 text-red-400" />
-                )}
-                <h3 className="text-sm font-medium text-gray-300">Test Result</h3>
+          <div className="space-y-4">
+            <SectionCard eyebrow="Status" title="Current state" description="Configured status versus verified live tunnel.">
+              <div className="space-y-3 text-sm">
+                <div><span className="text-slate-500">Connection:</span> <span className={vpnVerified ? 'text-emerald-300' : vpnConfigured ? 'text-sky-200' : 'text-amber-200'}>{vpnVerified ? 'Verified by test' : vpnConfigured ? 'Configured, not verified' : enabled ? 'Proxy not configured' : 'Disabled'}</span></div>
+                {displayedConfig.current_server && <div><span className="text-slate-500">Server:</span> <span className="text-slate-200">{displayedConfig.current_server}</span></div>}
+                {displayedConfig.current_ip && <div><span className="text-slate-500">IP:</span> <span className="text-slate-200">{displayedConfig.current_ip}</span></div>}
               </div>
-              <div className="text-sm">
-                <p className={testResult.connected ? 'text-green-400' : 'text-red-400'}>
-                  {testResult.connected ? 'Connection test succeeded' : 'Connection test failed'}
-                </p>
-                {testResult.ip && (
-                  <p className="text-gray-400 mt-1">
-                    IP {testResult.ip}{testResult.country ? ` (${testResult.country})` : ''}
-                  </p>
-                )}
-                {testResult.mullvad_exit_ip && (
-                  <p className="text-emerald-400 mt-1">Mullvad exit IP detected</p>
-                )}
-                {testResult.error && (
-                  <p className="text-red-300 mt-1">{testResult.error}</p>
-                )}
-              </div>
-            </div>
-          )}
+            </SectionCard>
 
-          <div className="flex gap-3 pt-4 border-t border-gray-700">
-            <button
-              onClick={() => saveMutation.mutate()}
-              disabled={saving || !configReady}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              Save Configuration
-            </button>
-            <button
-              onClick={() => testMutation.mutate()}
-              disabled={testing || !configReady}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {testing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <TestTube className="w-4 h-4" />
-              )}
-              Test Connection
-            </button>
+            <SectionCard eyebrow="Notes" title="Deployment guidance" description="Keep the current VPN path explicit.">
+              <div className="space-y-3 text-sm text-slate-400">
+                <p>Use uploaded WireGuard profiles for Gluetun deployments. If a SOCKS5 proxy is configured, it should point to the VPN proxy path.</p>
+                <p>Legacy account number fields are kept for compatibility, but the live routing path is what the connection test verifies.</p>
+              </div>
+            </SectionCard>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-        <h2 className="text-xl font-semibold text-gray-100 mb-4">Crawler Settings</h2>
-        <p className="text-gray-500 text-sm">
-          Additional crawler settings can be configured via environment variables.
-          See the documentation for more details.
-        </p>
-      </div>
+      {activeTab === 'Crawler Settings' && (
+        <SectionCard eyebrow="Crawler" title="Crawler settings" description="These crawler settings still come from environment variables in this deployment.">
+          <p className="text-sm text-slate-400">The crawler runtime is configured outside the UI. This tab exists to keep the page organized and make room for future controls.</p>
+        </SectionCard>
+      )}
+
+      {activeTab === 'Notifications' && (
+        <SectionCard eyebrow="Notifications" title="Notifications" description="Wire up alerts from the backend when you are ready.">
+          <p className="text-sm text-slate-400">Email and webhook settings are not exposed here yet. Add them when the backend supports editable notification settings.</p>
+        </SectionCard>
+      )}
+
+      {activeTab === 'Data Management' && (
+        <SectionCard eyebrow="Data" title="Data management" description="Housekeeping actions for imports and retention.">
+          <p className="text-sm text-slate-400">Use the admin tools elsewhere in the app for exports and bulk data operations. This section stays reserved for future maintenance actions.</p>
+        </SectionCard>
+      )}
     </div>
   )
 }

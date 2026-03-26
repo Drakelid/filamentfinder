@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { TrendingUp, TrendingDown, Loader2, Package, Filter, ArrowRightLeft, ExternalLink, ChevronDown, ChevronUp, Sparkles, Clock8, Link2, Tag, X, LineChart, Ship, Settings2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, Loader2, Package, Filter, ArrowRightLeft, ExternalLink, ChevronDown, ChevronUp, Sparkles, Clock8, Link2, Tag, X, LineChart, Ship, Settings2, Download } from 'lucide-react'
 import { api, Product, CrossSourceGroup, TypeSummary, VariantSummary, Source, PriceObservation, PriceChange } from '../api'
 import { formatDistanceToNow } from 'date-fns'
+import PriceChangeSparkline from '../components/price-changes/PriceChangeSparkline'
 
 function formatPrice(amount: string | null, currency: string | null): string {
   if (!amount) return '-'
@@ -14,6 +15,24 @@ function formatPrice(amount: string | null, currency: string | null): string {
   } catch {
     return `${curr} ${num.toFixed(2)}`
   }
+}
+
+function buildCsvValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return '""'
+  return `"${String(value).replace(/"/g, '""')}"`
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map(buildCsvValue).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 type ComparisonProduct = CrossSourceGroup['products'][number]
@@ -835,6 +854,50 @@ export default function PriceChangesPage() {
     })
   }
 
+  const products = data?.items || []
+  const comparisonGroups = comparisonData?.groups || []
+
+  const changeCounts = useMemo(() => {
+    const summary = {
+      total: products.length,
+      decrease: 0,
+      increase: 0,
+      unchanged: 0,
+      bestDrop: 0,
+    }
+
+    products.forEach((product) => {
+      if (product.latest_change_type === 'price_decrease') {
+        summary.decrease += 1
+      } else if (product.latest_change_type === 'price_increase') {
+        summary.increase += 1
+      } else {
+        summary.unchanged += 1
+      }
+
+      if (product.latest_change_percent !== null) {
+        summary.bestDrop = Math.max(summary.bestDrop, Math.abs(product.latest_change_percent))
+      }
+    })
+
+    return summary
+  }, [products])
+
+  const handleExportCsv = () => {
+    if (!products.length) return
+    downloadCsv(`price-changes-${days}d.csv`, [
+      ['Product', 'Brand', 'Category', 'Change', 'Current Price', 'Changed'],
+      ...products.map((product) => [
+        product.name,
+        product.brand || '',
+        product.category,
+        product.latest_change_type || '',
+        product.latest_price ? formatPrice(product.latest_price.price_amount, product.latest_price.currency) : '',
+        product.latest_change_at || '',
+      ]),
+    ])
+  }
+
   if (isLoading && activeTab === 'changes') {
     return (
       <div className="flex items-center justify-center h-64">
@@ -851,27 +914,47 @@ export default function PriceChangesPage() {
     )
   }
   
-  const products = data?.items || []
-  const comparisonGroups = comparisonData?.groups || []
-  
   return (
     <div className="space-y-6">
-      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-2xl shadow-slate-950/40 relative overflow-hidden">
-        <div className="absolute inset-y-0 right-0 w-1/2 opacity-40 pointer-events-none" style={{ background: 'radial-gradient(circle at 30% 20%, rgba(59,130,246,0.25), transparent 55%)' }} />
-        <div className="relative z-10">
-          <p className="text-xs uppercase tracking-[0.4em] text-slate-500 mb-2">Insights</p>
-          <h1 className="text-3xl font-semibold text-white">Price Intelligence</h1>
-          <p className="text-slate-300 mt-2">
-            {activeTab === 'changes' 
-              ? `${data?.total || 0} products with price changes in the last ${days} days`
-              : `${comparisonData?.total_groups || 0} products available from multiple sources`
-            }
-          </p>
+      <div className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900/95 to-slate-950 p-6 shadow-2xl shadow-black/30">
+        <div className="absolute inset-0 pointer-events-none opacity-70" style={{ background: 'radial-gradient(circle at top right, rgba(245, 158, 11, 0.16), transparent 36%), radial-gradient(circle at 18% 20%, rgba(139, 92, 246, 0.18), transparent 30%)' }} />
+        <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-xs uppercase tracking-[0.35em] text-slate-400">
+              <TrendingDown className="h-3.5 w-3.5 text-amber-400" />
+              Price intelligence
+            </div>
+            <div>
+              <h1 className="text-3xl font-semibold text-white">Price Changes</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-300">
+                Track price drops, price hikes, and cross-source comparison signals without leaving the page.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.35em] text-slate-500">Tracked</div>
+              <div className="mt-1 text-2xl font-semibold text-white">{changeCounts.total.toLocaleString()}</div>
+            </div>
+            <div className="rounded-2xl border border-emerald-900/40 bg-emerald-950/30 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.35em] text-emerald-300/70">Drops</div>
+              <div className="mt-1 text-2xl font-semibold text-emerald-200">{changeCounts.decrease.toLocaleString()}</div>
+            </div>
+            <div className="rounded-2xl border border-rose-900/40 bg-rose-950/30 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.35em] text-rose-300/70">Increases</div>
+              <div className="mt-1 text-2xl font-semibold text-rose-200">{changeCounts.increase.toLocaleString()}</div>
+            </div>
+            <div className="rounded-2xl border border-amber-900/40 bg-amber-950/30 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.35em] text-amber-300/70">Largest move</div>
+              <div className="mt-1 text-2xl font-semibold text-amber-200">{changeCounts.bestDrop.toFixed(1)}%</div>
+            </div>
+          </div>
         </div>
       </div>
       
       {/* Tab Navigation */}
-      <div className="flex gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => setActiveTab('changes')}
           className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold tracking-wide transition-all ${
@@ -894,12 +977,23 @@ export default function PriceChangesPage() {
           <ArrowRightLeft className="w-4 h-4" />
           Compare Prices
         </button>
+        {activeTab === 'changes' && (
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={products.length === 0}
+            className="ml-auto inline-flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-200 transition-colors hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </button>
+        )}
       </div>
       
-      <div className="bg-slate-900/70 rounded-3xl border border-slate-800 p-5 sticky top-4 z-20 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60">
-        <div className="flex flex-wrap gap-4 items-center text-sm text-slate-300">
+      <div className="sticky top-4 z-20 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20 backdrop-blur supports-[backdrop-filter]:bg-slate-900/65">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-300">
           <div className="flex items-center gap-2 text-slate-400">
-            <div className="h-8 w-8 rounded-2xl bg-slate-800 flex items-center justify-center">
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-800">
               <Filter className="w-4 h-4" />
             </div>
             {activeTab === 'changes' && (
@@ -966,7 +1060,7 @@ export default function PriceChangesPage() {
           {hasActiveFilters && (
             <button
               onClick={resetFilters}
-              className="ml-auto px-4 py-2 rounded-2xl text-xs font-semibold uppercase tracking-wide border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500"
+              className="ml-auto rounded-2xl border border-slate-700 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-300 hover:border-slate-500 hover:text-white"
             >
               Reset filters
             </button>
@@ -996,34 +1090,53 @@ export default function PriceChangesPage() {
       {activeTab === 'changes' && (
         <>
           {products.length === 0 ? (
-            <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
-              <Package className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <p className="text-gray-400">No price changes found</p>
-              <p className="text-sm text-gray-500 mt-1">
-                Try adjusting the filters or time range
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-10 text-center shadow-lg shadow-black/20">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl border border-amber-900/40 bg-amber-950/30">
+                <Package className="h-8 w-8 text-amber-300" />
+              </div>
+              <h2 className="text-xl font-semibold text-white">No price changes found</h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-slate-400">
+                Try a longer date range or clear the filters. We only show products that actually moved in the selected window.
               </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-amber-400"
+                >
+                  Reset filters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('compare')}
+                  className="rounded-2xl border border-slate-700 bg-slate-950/50 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-500 hover:text-white"
+                >
+                  Check cross-source prices
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/70 shadow-lg shadow-black/20">
               <table className="w-full">
-                <thead className="bg-gray-900 border-b border-gray-700">
+                <thead className="bg-slate-950/80 border-b border-slate-800">
                   <tr>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Product</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Category</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-300">Change</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-300">Current Price</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-300">Changed</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Product</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Category</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Trend</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Change</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Current Price</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Changed</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700">
+                <tbody className="divide-y divide-slate-800/80">
                   {products.map((product: Product) => (
-                    <tr key={product.id} className="hover:bg-gray-700/50">
-                      <td className="px-4 py-3">
+                    <tr key={product.id} className="bg-slate-900/30 transition-colors hover:bg-slate-800/60">
+                      <td className="px-4 py-4">
                         <Link 
                           to={`/products/${product.id}`}
                           className="flex items-center gap-3 group"
                         >
-                          <div className="w-12 h-12 bg-gray-900 rounded-lg flex-shrink-0 overflow-hidden">
+                          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
                             {product.image_url ? (
                               <img
                                 src={product.image_url}
@@ -1035,39 +1148,45 @@ export default function PriceChangesPage() {
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">
-                                <Package className="w-6 h-6 text-gray-700" />
+                                <Package className="w-6 h-6 text-slate-700" />
                               </div>
                             )}
                           </div>
                           <div>
-                            <div className="font-medium text-gray-100 group-hover:text-blue-400 line-clamp-1">
+                            <div className="font-medium text-slate-100 group-hover:text-amber-300 line-clamp-1">
                               {product.name}
                             </div>
                             {product.brand && (
-                              <div className="text-sm text-gray-500">{product.brand}</div>
+                              <div className="text-sm text-slate-400">{product.brand}</div>
                             )}
                           </div>
                         </Link>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-4">
                         <CategoryBadge category={product.category} />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-4">
+                        <PriceChangeSparkline
+                          productId={product.id}
+                          currency={product.latest_price?.currency || 'USD'}
+                        />
+                      </td>
+                      <td className="px-4 py-4">
                         <ChangeTypeBadge 
                           type={product.latest_change_type} 
                           percent={product.latest_change_percent} 
                         />
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-4 text-right">
                         {product.latest_price ? (
-                          <span className="font-medium text-gray-100">
+                          <span className="font-semibold text-white">
                             {formatPrice(product.latest_price.price_amount, product.latest_price.currency)}
                           </span>
                         ) : (
-                          <span className="text-gray-500">-</span>
+                          <span className="text-slate-500">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-sm text-gray-400">
+                      <td className="px-4 py-4 text-right text-sm text-slate-400">
                         {product.latest_change_at
                           ? formatDistanceToNow(new Date(product.latest_change_at), { addSuffix: true })
                           : '-'}
