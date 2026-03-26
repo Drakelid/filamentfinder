@@ -527,25 +527,6 @@ function ComparisonGroup({
           </table>
         </div>
       )}
-      <InspectorPanel
-        product={inspectorProduct}
-        shippingFee={inspectorProduct ? shippingFees[inspectorProduct.source_id] || 0 : 0}
-        history={inspectorHistory}
-        isLoading={inspectorHistoryLoading}
-        onClose={closeInspector}
-        onOpenProduct={() => {
-          if (inspectorProduct) {
-            navigate(`/products/${inspectorProduct.id}`)
-          }
-        }}
-        onOpenShipping={() => {
-          if (inspectorProduct) {
-            navigate(`/shipping?source=${inspectorProduct.source_id}`)
-          } else {
-            navigate('/shipping')
-          }
-        }}
-      />
     </div>
   )
 }
@@ -1437,6 +1418,25 @@ export default function PriceChangesPage() {
           )}
         </>
       )}
+      <InspectorPanel
+        product={inspectorProduct}
+        shippingFee={inspectorProduct ? shippingFees[inspectorProduct.source_id] || 0 : 0}
+        history={inspectorHistory}
+        isLoading={inspectorHistoryLoading}
+        onClose={closeInspector}
+        onOpenProduct={() => {
+          if (inspectorProduct) {
+            navigate(`/products/${inspectorProduct.id}`)
+          }
+        }}
+        onOpenShipping={() => {
+          if (inspectorProduct) {
+            navigate(`/shipping?source=${inspectorProduct.source_id}`)
+          } else {
+            navigate('/shipping')
+          }
+        }}
+      />
     </div>
   )
 }
