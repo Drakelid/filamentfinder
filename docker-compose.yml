@@ -62,8 +62,6 @@ services:
       - MULLVAD_ACCOUNT_NUMBER=${MULLVAD_ACCOUNT_NUMBER:-}
       - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-http://gluetun:8888}
     depends_on:
-      gluetun:
-        condition: service_started
       db:
         condition: service_healthy
       redis:
@@ -90,7 +88,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       gluetun:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
       redis:
