@@ -91,6 +91,7 @@ export interface Source {
 
 export interface VPNConfig {
   account_number_set: boolean
+  proxy_configured: boolean
   enabled: boolean
   auto_rotate: boolean
   rotate_interval_minutes: number
@@ -369,6 +370,7 @@ export const api = {
     getVpn: () => fetchApi<VPNConfig>('/config/vpn'),
     updateVpn: (data: {
       account_number?: string
+      socks_proxy?: string
       enabled: boolean
       auto_rotate: boolean
       rotate_interval_minutes: number

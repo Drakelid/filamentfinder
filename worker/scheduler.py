@@ -330,6 +330,7 @@ class ScanWorker:
     async def _check_product_prices(self, source_id: int, product_ids: List[int]):
         """Check prices for a batch of products from a single source."""
         from worker.crawler.browser import requires_browser, fetch_with_browser
+        from worker.crawler.vpn import vpn_manager
         import httpx
         
         logger.info("Checking prices for source", source_id=source_id, product_count=len(product_ids))
@@ -356,7 +357,11 @@ class ScanWorker:
                     if requires_browser(url):
                         html, headers = await fetch_with_browser(url)
                     else:
-                        async with httpx.AsyncClient(timeout=settings.crawler_timeout) as client:
+                        proxy_url = vpn_manager.require_proxy() if vpn_manager.is_enabled else vpn_manager.get_proxy_url()
+                        client_kwargs = {"timeout": settings.crawler_timeout}
+                        if proxy_url:
+                            client_kwargs["proxy"] = proxy_url
+                        async with httpx.AsyncClient(**client_kwargs) as client:
                             response = await client.get(
                                 url,
                                 headers={

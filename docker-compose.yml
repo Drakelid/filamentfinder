@@ -45,6 +45,7 @@ services:
       - CONFIG_ENCRYPTION_KEY=${CONFIG_ENCRYPTION_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - MULLVAD_ACCOUNT_NUMBER=${MULLVAD_ACCOUNT_NUMBER:-}
+      - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-}
     depends_on:
       db:
         condition: service_healthy

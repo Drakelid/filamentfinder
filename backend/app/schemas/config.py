@@ -30,6 +30,7 @@ class ConfigResponse(ConfigBase):
 class VPNConfigUpdate(BaseModel):
     """Schema for updating VPN configuration."""
     account_number: Optional[str] = None
+    socks_proxy: Optional[str] = None
     enabled: bool = False
     auto_rotate: bool = True
     rotate_interval_minutes: int = 30
@@ -38,6 +39,7 @@ class VPNConfigUpdate(BaseModel):
 class VPNConfigResponse(BaseModel):
     """Schema for VPN configuration response."""
     account_number_set: bool
+    proxy_configured: bool
     enabled: bool
     auto_rotate: bool
     rotate_interval_minutes: int

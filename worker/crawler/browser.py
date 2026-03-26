@@ -52,6 +52,7 @@ async def fetch_with_browser(url: str, timeout: int = 30) -> Tuple[str, Dict[str
     import random
     from playwright.async_api import async_playwright
     from worker.crawler.antibot import antibot_manager
+    from worker.crawler.vpn import vpn_manager
     
     domain = urlparse(url).netloc.lower()
     logger.info("Fetching with browser", url=url, domain=domain)
@@ -60,9 +61,14 @@ async def fetch_with_browser(url: str, timeout: int = 30) -> Tuple[str, Dict[str
     context_options = antibot_manager.get_browser_context_options(domain)
     
     async with async_playwright() as p:
+        proxy = vpn_manager.get_playwright_proxy()
+        if vpn_manager.is_enabled and not proxy:
+            raise RuntimeError("VPN is enabled but Playwright has no proxy configuration")
+
         # Launch with additional stealth options
         browser = await p.chromium.launch(
             headless=True,
+            proxy=proxy,
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',

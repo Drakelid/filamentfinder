@@ -1,5 +1,6 @@
 import os
 from typing import List
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -82,24 +83,33 @@ def set_config_value(db: Session, key: str, value: str, encrypted: bool = False,
     return config
 
 
+def get_proxy_host(proxy_url: str) -> str | None:
+    if not proxy_url:
+        return None
+    try:
+        parsed = urlparse(proxy_url)
+        return parsed.hostname
+    except Exception:
+        return None
+
+
 @router.get("/vpn", response_model=VPNConfigResponse)
 def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
     account_number = get_config_value(db, "vpn_account_number", "")
+    proxy_url = get_config_value(db, "mullvad_socks_proxy", "") or os.environ.get("MULLVAD_SOCKS_PROXY", "")
     enabled = get_config_value(db, "vpn_enabled", "false") == "true"
     auto_rotate = get_config_value(db, "vpn_auto_rotate", "true") == "true"
     rotate_interval = int(get_config_value(db, "vpn_rotate_interval_minutes", "30"))
-    
-    # Check if Mullvad account is configured (worker runs through Gluetun VPN container)
-    mullvad_account = os.environ.get("MULLVAD_ACCOUNT_NUMBER", "")
-    
-    # VPN is connected if account number is configured (worker uses network_mode: service:mullvad)
-    connected = bool(mullvad_account)
-    current_server = "Gluetun/Mullvad (Nordic: NO/SE/DK/FI)" if connected else None
+
+    connected = enabled and bool(proxy_url)
+    proxy_host = get_proxy_host(proxy_url)
+    current_server = proxy_host if connected and proxy_host else ("SOCKS5 proxy configured" if connected else None)
     current_ip = None
-    
+
     return VPNConfigResponse(
         account_number_set=bool(account_number),
+        proxy_configured=bool(proxy_url),
         enabled=enabled,
         auto_rotate=auto_rotate,
         rotate_interval_minutes=rotate_interval,
@@ -119,6 +129,15 @@ def update_vpn_config(config: VPNConfigUpdate, db: Session = Depends(get_db)):
             config.account_number, 
             encrypted=True,
             description="Mullvad VPN account number"
+        )
+
+    if config.socks_proxy is not None:
+        set_config_value(
+            db,
+            "mullvad_socks_proxy",
+            config.socks_proxy,
+            encrypted=True,
+            description="SOCKS5 proxy URL for crawler VPN routing"
         )
     
     set_config_value(

@@ -34,6 +34,8 @@ class WorkerSettings(BaseSettings):
     
     webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
+
+    mullvad_socks_proxy: Optional[str] = None
     
     log_level: str = "INFO"
 

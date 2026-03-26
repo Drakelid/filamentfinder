@@ -6,6 +6,7 @@ import { api, VPNConfig, VPNStatus } from '../api'
 export default function ConfigPage() {
   const [vpnConfig, setVpnConfig] = useState<VPNConfig | null>(null)
   const [accountNumber, setAccountNumber] = useState('')
+  const [socksProxy, setSocksProxy] = useState('')
   const [showAccountNumber, setShowAccountNumber] = useState(false)
   const [enabled, setEnabled] = useState(false)
   const [autoRotate, setAutoRotate] = useState(true)
@@ -35,6 +36,7 @@ export default function ConfigPage() {
     mutationFn: () => {
       const payload: {
         account_number?: string
+        socks_proxy?: string
         enabled: boolean
         auto_rotate: boolean
         rotate_interval_minutes: number
@@ -46,6 +48,9 @@ export default function ConfigPage() {
 
       if (accountNumber.trim()) {
         payload.account_number = accountNumber.trim()
+      }
+      if (socksProxy.trim()) {
+        payload.socks_proxy = socksProxy.trim()
       }
 
       return api.config.updateVpn(payload)
@@ -61,6 +66,7 @@ export default function ConfigPage() {
       setAutoRotate(data.auto_rotate)
       setRotateInterval(data.rotate_interval_minutes)
       setAccountNumber('')
+      setSocksProxy('')
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     },
@@ -99,6 +105,7 @@ export default function ConfigPage() {
   const configReady = !vpnConfigQuery.isLoading
   const displayedConfig: VPNConfig = vpnConfig ?? {
     account_number_set: false,
+    proxy_configured: false,
     enabled,
     auto_rotate: autoRotate,
     rotate_interval_minutes: rotateInterval,
@@ -195,6 +202,28 @@ export default function ConfigPage() {
             )}
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              SOCKS5 Proxy URL
+            </label>
+            <input
+              type="text"
+              value={socksProxy}
+              onChange={(e) => setSocksProxy(e.target.value)}
+              placeholder={displayedConfig.proxy_configured ? 'Configured in backend' : 'socks5://user:pass@host:1080'}
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={!configReady}
+            />
+            <p className="mt-1 text-sm text-gray-500">
+              Required for crawler traffic. When VPN is enabled, the worker will only crawl through this SOCKS5 proxy.
+            </p>
+            {displayedConfig.proxy_configured && (
+              <p className="mt-1 text-sm text-green-500">
+                Proxy URL is configured
+              </p>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <div>
               <label className="block text-sm font-medium text-gray-300">
@@ -271,7 +300,7 @@ export default function ConfigPage() {
               <div>
                 <span className="text-gray-500">Connection:</span>{' '}
                 <span className={displayedConfig.connected ? 'text-green-400' : 'text-yellow-400'}>
-                  {displayedConfig.connected ? 'Connected' : (enabled ? 'Not Configured' : 'Disabled')}
+                  {displayedConfig.connected ? 'Connected' : (enabled ? 'Proxy Not Configured' : 'Disabled')}
                 </span>
               </div>
               {displayedConfig.current_server && (
@@ -289,11 +318,11 @@ export default function ConfigPage() {
             </div>
             {!displayedConfig.connected && (
               <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded text-sm text-yellow-300">
-                <p className="font-medium">VPN requires Mullvad account configuration:</p>
+                <p className="font-medium">VPN routing requires a SOCKS5 proxy URL:</p>
                 <ol className="list-decimal list-inside mt-1 text-yellow-400 space-y-1">
-                  <li>Add your 16-digit Mullvad account number to <code className="bg-gray-800 px-1 rounded">.env</code></li>
-                  <li>Set <code className="bg-gray-800 px-1 rounded">MULLVAD_ACCOUNT_NUMBER=1234567890123456</code></li>
-                  <li>Restart containers: <code className="bg-gray-800 px-1 rounded">docker compose up -d</code></li>
+                  <li>Set a SOCKS5 URL in this page or in <code className="bg-gray-800 px-1 rounded">.env</code></li>
+                  <li>Use <code className="bg-gray-800 px-1 rounded">MULLVAD_SOCKS_PROXY=socks5://user:pass@host:1080</code></li>
+                  <li>Restart containers after changing environment-based proxy settings</li>
                 </ol>
               </div>
             )}

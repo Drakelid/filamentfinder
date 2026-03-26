@@ -17,9 +17,15 @@ import os
 from typing import Optional, List, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
+from urllib.parse import urlparse
+
+from cryptography.fernet import Fernet, InvalidToken
 import structlog
 
+from worker.config import get_settings
+
 logger = structlog.get_logger(__name__)
+settings = get_settings()
 
 # Mullvad server locations - Nordic countries only
 PREFERRED_LOCATIONS = [
@@ -67,7 +73,7 @@ class MullvadVPN:
         self._current_proxy_index: int = 0
         
         # Check for external SOCKS proxy configuration
-        self._external_proxy = os.environ.get("MULLVAD_SOCKS_PROXY", "")
+        self._external_proxy = settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")
     
     def configure(
         self,
@@ -99,31 +105,24 @@ class MullvadVPN:
         return True
     
     async def connect(self) -> bool:
-        """Mark VPN as connected (traffic routes through Gluetun container)."""
+        """Enable the configured proxy path."""
         if not self._enabled:
             logger.debug("VPN not enabled, skipping connect")
             return False
-        
-        # Check if running through Gluetun VPN container
-        # The worker uses network_mode: service:mullvad, so all traffic goes through VPN
-        wireguard_key = os.environ.get("MULLVAD_WIREGUARD_PRIVATE_KEY", "")
-        
-        if wireguard_key or self._external_proxy:
+
+        if self._external_proxy:
             self._status.connected = True
-            self._status.server = "Gluetun/Mullvad (Nordic)"
-            self._status.location = "Nordic (NO/SE/DK/FI)"
+            self._status.server = urlparse(self._external_proxy).hostname or "SOCKS5 proxy"
+            self._status.location = "Proxy"
             self._last_rotation = datetime.utcnow()
-            logger.info("VPN connected via Gluetun container", location=self._status.location)
+            logger.info("VPN connected via configured proxy", server=self._status.server)
             return True
-        
-        # Check if we're running in the VPN network by testing connectivity
-        # If the container is using network_mode: service:mullvad, we're connected
-        self._status.connected = True
-        self._status.server = "Gluetun/Mullvad"
-        self._status.location = "Nordic"
-        self._last_rotation = datetime.utcnow()
-        logger.info("VPN connected via container network mode")
-        return True
+
+        self._status.connected = False
+        self._status.server = None
+        self._status.location = None
+        logger.warning("VPN enabled but no SOCKS proxy configured")
+        return False
     
     async def disconnect(self) -> bool:
         """Disable SOCKS5 proxy mode."""
@@ -202,12 +201,32 @@ class MullvadVPN:
         """Get SOCKS5 proxy URL for HTTP client."""
         if not self._enabled or not self._status.connected:
             return None
-        
-        # Only return proxy if external proxy is configured
-        if self._external_proxy:
-            return self._external_proxy
-        
-        return None
+        return self._external_proxy or None
+
+    def get_playwright_proxy(self) -> Optional[dict]:
+        proxy_url = self.get_proxy_url()
+        if not proxy_url:
+            return None
+
+        parsed = urlparse(proxy_url)
+        server = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            server = f"{server}:{parsed.port}"
+
+        proxy = {"server": server}
+        if parsed.username:
+            proxy["username"] = parsed.username
+        if parsed.password:
+            proxy["password"] = parsed.password
+        return proxy
+
+    def require_proxy(self) -> str:
+        proxy_url = self.get_proxy_url()
+        if proxy_url:
+            return proxy_url
+        if self._enabled:
+            raise RuntimeError("VPN is enabled but no SOCKS5 proxy is configured")
+        return ""
     
     @property
     def is_enabled(self) -> bool:
@@ -222,6 +241,21 @@ class MullvadVPN:
 vpn_manager = MullvadVPN()
 
 
+def _get_fernet() -> Fernet:
+    return Fernet(os.environ["CONFIG_ENCRYPTION_KEY"].encode())
+
+
+def _decrypt_if_needed(value: str, encrypted: bool) -> str:
+    if not value:
+        return ""
+    if not encrypted:
+        return value
+    try:
+        return _get_fernet().decrypt(value.encode()).decode()
+    except (InvalidToken, KeyError):
+        return ""
+
+
 async def initialize_vpn_from_config():
     """Initialize VPN from database configuration."""
     from worker.database import get_db_session
@@ -231,23 +265,22 @@ async def initialize_vpn_from_config():
         from sqlalchemy import text
         
         # Get VPN config from database
-        result = db.execute(text("SELECT key, value, encrypted FROM config WHERE key LIKE 'vpn_%'"))
-        config = {row[0]: row[1] for row in result}
+        result = db.execute(
+            text("SELECT key, value, encrypted FROM config WHERE key LIKE 'vpn_%' OR key = 'mullvad_socks_proxy'")
+        )
+        config = {row[0]: _decrypt_if_needed(row[1], row[2]) for row in result}
         
         if not config:
             logger.info("No VPN configuration found in database")
             return
         
         account_number = config.get("vpn_account_number", "")
+        socks_proxy = config.get("mullvad_socks_proxy", "") or settings.mullvad_socks_proxy or os.environ.get("MULLVAD_SOCKS_PROXY", "")
         enabled = config.get("vpn_enabled", "false") == "true"
         auto_rotate = config.get("vpn_auto_rotate", "true") == "true"
         rotate_interval = int(config.get("vpn_rotate_interval_minutes", "30"))
-        
-        # Decrypt account number if encrypted
-        if account_number and config.get("vpn_account_number"):
-            # For now, assume it's stored encrypted - would need proper decryption
-            # In production, use the same encryption as the backend
-            pass
+
+        vpn_manager._external_proxy = socks_proxy
         
         vpn_manager.configure(
             account_number=account_number,
@@ -256,8 +289,9 @@ async def initialize_vpn_from_config():
             rotate_interval_minutes=rotate_interval,
         )
         
-        if enabled and account_number:
-            await vpn_manager.set_account(account_number)
+        if enabled:
+            if account_number:
+                await vpn_manager.set_account(account_number)
             await vpn_manager.connect()
             if auto_rotate:
                 await vpn_manager.start_auto_rotation()

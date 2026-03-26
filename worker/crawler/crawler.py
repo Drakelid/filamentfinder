@@ -248,7 +248,7 @@ class Crawler:
         
         # Check if VPN SOCKS5 proxy is enabled
         from worker.crawler.vpn import vpn_manager
-        proxy_url = vpn_manager.get_proxy_url()
+        proxy_url = vpn_manager.require_proxy() if vpn_manager.is_enabled else vpn_manager.get_proxy_url()
         
         try:
             client_kwargs = {"timeout": settings.crawler_timeout}
