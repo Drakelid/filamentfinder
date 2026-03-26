@@ -73,7 +73,6 @@ services:
       - MULLVAD_ACCOUNT_NUMBER=${MULLVAD_ACCOUNT_NUMBER:-}
       - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-}
       - GLUETUN_ENABLED=true
-      - API_PORT=8001
     depends_on:
       gluetun:
         condition: service_started
