@@ -17,6 +17,8 @@ services:
       - DOT=off
       - HTTPPROXY=on
     restart: unless-stopped
+    volumes:
+      - gluetun_data:/gluetun
 
   db:
     image: postgres:15-alpine
@@ -61,6 +63,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - MULLVAD_ACCOUNT_NUMBER=${MULLVAD_ACCOUNT_NUMBER:-}
       - MULLVAD_SOCKS_PROXY=${MULLVAD_SOCKS_PROXY:-http://gluetun:8888}
+    volumes:
+      - gluetun_data:/gluetun
     depends_on:
       db:
         condition: service_healthy
@@ -109,5 +113,6 @@ services:
       - backend
 
 volumes:
+  gluetun_data:
   postgres_data:
   redis_data:

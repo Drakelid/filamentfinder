@@ -1,9 +1,12 @@
 import os
+import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from functools import lru_cache
 from cryptography.fernet import Fernet, InvalidToken
@@ -18,9 +21,14 @@ from app.schemas.config import (
     VPNConfigUpdate,
     VPNConfigResponse,
     VPNStatusResponse,
+    WireGuardConfigUploadResponse,
 )
 
 router = APIRouter(dependencies=[Depends(require_admin_api_key)])
+GLUETUN_WIREGUARD_DIR = Path("/gluetun/wireguard")
+GLUETUN_WIREGUARD_FILE = GLUETUN_WIREGUARD_DIR / "wg0.conf"
+WIREGUARD_PRIVATE_KEY_PATTERN = re.compile(r"^\s*PrivateKey\s*=\s*(.+?)\s*$", re.MULTILINE)
+WIREGUARD_ADDRESS_PATTERN = re.compile(r"^\s*Address\s*=\s*(.+?)\s*$", re.MULTILINE)
 
 
 @lru_cache()
@@ -93,6 +101,36 @@ def get_proxy_host(proxy_url: str) -> str | None:
         return None
 
 
+def parse_wireguard_config(config_text: str) -> tuple[str, str]:
+    private_key_match = WIREGUARD_PRIVATE_KEY_PATTERN.search(config_text)
+    address_match = WIREGUARD_ADDRESS_PATTERN.search(config_text)
+    if not private_key_match or not address_match:
+        raise HTTPException(status_code=400, detail="WireGuard config must contain PrivateKey and Address fields")
+
+    private_key = private_key_match.group(1).strip()
+    addresses = address_match.group(1).strip()
+    if not private_key or not addresses:
+        raise HTTPException(status_code=400, detail="WireGuard config contains empty PrivateKey or Address values")
+
+    return private_key, addresses
+
+
+def get_wireguard_file_metadata(db: Session) -> tuple[bool, str | None, datetime | None]:
+    if not GLUETUN_WIREGUARD_FILE.exists():
+        return False, None, None
+
+    file_name = get_config_value(db, "vpn_wireguard_file_name", "") or GLUETUN_WIREGUARD_FILE.name
+    uploaded_at_raw = get_config_value(db, "vpn_wireguard_uploaded_at", "")
+    uploaded_at = None
+    if uploaded_at_raw:
+        try:
+            uploaded_at = datetime.fromisoformat(uploaded_at_raw)
+        except ValueError:
+            uploaded_at = None
+
+    return True, file_name, uploaded_at
+
+
 @router.get("/vpn", response_model=VPNConfigResponse)
 def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
@@ -102,6 +140,7 @@ def get_vpn_config(db: Session = Depends(get_db)):
     enabled = get_config_value(db, "vpn_enabled", "false") == "true"
     auto_rotate = get_config_value(db, "vpn_auto_rotate", "true") == "true"
     rotate_interval = int(get_config_value(db, "vpn_rotate_interval_minutes", "30"))
+    wireguard_file_configured, wireguard_file_name, wireguard_uploaded_at = get_wireguard_file_metadata(db)
 
     connected = enabled and (bool(proxy_url) or gluetun_enabled)
     proxy_host = get_proxy_host(proxy_url)
@@ -119,12 +158,55 @@ def get_vpn_config(db: Session = Depends(get_db)):
         gluetun_mode=gluetun_enabled,
         account_number_set=bool(account_number),
         proxy_configured=bool(proxy_url),
+        wireguard_file_configured=wireguard_file_configured,
+        wireguard_file_name=wireguard_file_name,
+        wireguard_uploaded_at=wireguard_uploaded_at,
         enabled=enabled,
         auto_rotate=auto_rotate,
         rotate_interval_minutes=rotate_interval,
         connected=connected,
         current_server=current_server,
         current_ip=current_ip,
+    )
+
+
+@router.post("/vpn/wireguard-config", response_model=WireGuardConfigUploadResponse)
+async def upload_wireguard_config(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Upload a WireGuard config file for Gluetun to use on next restart."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="WireGuard config file is required")
+
+    filename = file.filename.strip()
+    if not filename.lower().endswith(".conf"):
+        raise HTTPException(status_code=400, detail="WireGuard config must be a .conf file")
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Uploaded WireGuard config is empty")
+    if len(payload) > 64 * 1024:
+        raise HTTPException(status_code=400, detail="WireGuard config file must be 64 KB or smaller")
+
+    try:
+        config_text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="WireGuard config must be valid UTF-8 text") from exc
+
+    _, addresses = parse_wireguard_config(config_text)
+
+    GLUETUN_WIREGUARD_DIR.mkdir(parents=True, exist_ok=True)
+    GLUETUN_WIREGUARD_FILE.write_text(config_text, encoding="utf-8")
+
+    uploaded_at = datetime.now(timezone.utc)
+    set_config_value(db, "vpn_wireguard_file_name", filename, description="Uploaded WireGuard config filename")
+    set_config_value(db, "vpn_wireguard_uploaded_at", uploaded_at.isoformat(), description="Uploaded WireGuard config timestamp")
+
+    return WireGuardConfigUploadResponse(
+        file_name=filename,
+        addresses=addresses,
+        uploaded_at=uploaded_at,
     )
 
 

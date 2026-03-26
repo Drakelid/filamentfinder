@@ -41,6 +41,9 @@ class VPNConfigResponse(BaseModel):
     gluetun_mode: bool = False
     account_number_set: bool
     proxy_configured: bool
+    wireguard_file_configured: bool = False
+    wireguard_file_name: Optional[str] = None
+    wireguard_uploaded_at: Optional[datetime] = None
     enabled: bool
     auto_rotate: bool
     rotate_interval_minutes: int
@@ -56,3 +59,9 @@ class VPNStatusResponse(BaseModel):
     country: Optional[str] = None
     mullvad_exit_ip: bool = False
     error: Optional[str] = None
+
+
+class WireGuardConfigUploadResponse(BaseModel):
+    file_name: str
+    addresses: str
+    uploaded_at: datetime

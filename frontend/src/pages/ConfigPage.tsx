@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Settings, Shield, Eye, EyeOff, Save, TestTube, Loader2, CheckCircle, XCircle } from 'lucide-react'
-import { api, VPNConfig, VPNStatus } from '../api'
+import { Settings, Shield, Eye, EyeOff, Save, TestTube, Loader2, CheckCircle, XCircle, Upload } from 'lucide-react'
+import { api, uploadWireguardConfig, VPNConfig, VPNStatus, WireGuardConfigUploadResult } from '../api'
 
 export default function ConfigPage() {
   const [vpnConfig, setVpnConfig] = useState<VPNConfig | null>(null)
@@ -15,7 +15,9 @@ export default function ConfigPage() {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<VPNStatus | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const wireguardInputRef = useRef<HTMLInputElement | null>(null)
 
   const vpnConfigQuery = useQuery<VPNConfig>({
     queryKey: ['vpn-config'],
@@ -59,6 +61,7 @@ export default function ConfigPage() {
       setSaving(true)
       setError(null)
       setSaveSuccess(false)
+      setUploadSuccess(null)
     },
     onSuccess: (data: VPNConfig) => {
       setVpnConfig(data)
@@ -96,6 +99,21 @@ export default function ConfigPage() {
     },
   })
 
+  const wireguardUploadMutation = useMutation<WireGuardConfigUploadResult, Error, File>({
+    mutationFn: uploadWireguardConfig,
+    onMutate: () => {
+      setError(null)
+      setUploadSuccess(null)
+    },
+    onSuccess: async (data: WireGuardConfigUploadResult) => {
+      setUploadSuccess(`Uploaded ${data.file_name}. Restart Gluetun to apply it.`)
+      await vpnConfigQuery.refetch()
+    },
+    onError: (err: Error) => {
+      setError(err.message)
+    },
+  })
+
   const loadError = vpnConfigQuery.isError
     ? vpnConfigQuery.error instanceof Error
       ? vpnConfigQuery.error.message
@@ -107,6 +125,9 @@ export default function ConfigPage() {
     gluetun_mode: false,
     account_number_set: false,
     proxy_configured: false,
+    wireguard_file_configured: false,
+    wireguard_file_name: null,
+    wireguard_uploaded_at: null,
     enabled,
     auto_rotate: autoRotate,
     rotate_interval_minutes: rotateInterval,
@@ -158,6 +179,13 @@ export default function ConfigPage() {
         </div>
       )}
 
+      {uploadSuccess && (
+        <div className="bg-green-900/50 border border-green-700 text-green-200 px-4 py-3 rounded-lg flex items-center gap-2">
+          <CheckCircle className="w-5 h-5" />
+          {uploadSuccess}
+        </div>
+      )}
+
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
         <div className="flex items-center gap-3 mb-6">
           <Shield className="w-6 h-6 text-purple-500" />
@@ -174,6 +202,48 @@ export default function ConfigPage() {
         </div>
 
         <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              WireGuard Config File
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={wireguardInputRef}
+                type="file"
+                accept=".conf"
+                className="hidden"
+                onChange={(e) => {
+                  const selectedFile = e.target.files?.[0]
+                  if (!selectedFile) return
+                  wireguardUploadMutation.mutate(selectedFile)
+                  e.currentTarget.value = ''
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => wireguardInputRef.current?.click()}
+                disabled={!configReady || wireguardUploadMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {wireguardUploadMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                Upload .conf
+              </button>
+              {displayedConfig.wireguard_file_configured && displayedConfig.wireguard_file_name && (
+                <span className="text-sm text-green-400">
+                  {displayedConfig.wireguard_file_name}
+                  {displayedConfig.wireguard_uploaded_at ? ` uploaded ${new Date(displayedConfig.wireguard_uploaded_at).toLocaleString()}` : ''}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              Upload a Mullvad WireGuard config file to write <code className="bg-gray-800 px-1 rounded">wg0.conf</code> into the shared Gluetun volume. Restart Gluetun after upload so it picks up the new file.
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               Account Number
@@ -206,12 +276,7 @@ export default function ConfigPage() {
               {displayedConfig.gluetun_mode ? (
                 'This deployment uses Gluetun + Mullvad WireGuard. The account number is not used here.'
               ) : (
-                <>
-                  Your 16-digit Mullvad account number. Get one at{' '}
-                  <a href="https://mullvad.net" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                    mullvad.net
-                  </a>
-                </>
+                'Optional legacy field. For this deployment, uploading a Mullvad WireGuard config file is the preferred setup.'
               )}
             </p>
             {displayedConfig.account_number_set && !displayedConfig.gluetun_mode && (

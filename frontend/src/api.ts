@@ -93,6 +93,9 @@ export interface VPNConfig {
   gluetun_mode: boolean
   account_number_set: boolean
   proxy_configured: boolean
+  wireguard_file_configured: boolean
+  wireguard_file_name: string | null
+  wireguard_uploaded_at: string | null
   enabled: boolean
   auto_rotate: boolean
   rotate_interval_minutes: number
@@ -107,6 +110,12 @@ export interface VPNStatus {
   country: string | null
   mullvad_exit_ip: boolean
   error: string | null
+}
+
+export interface WireGuardConfigUploadResult {
+  file_name: string
+  addresses: string
+  uploaded_at: string
 }
 
 export interface StatsData {
@@ -537,4 +546,24 @@ export async function importSources(file: File) {
   }
 
   return response.json() as Promise<SourceImportResult>
+}
+
+export async function uploadWireguardConfig(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${API_BASE}/config/vpn/wireguard-config`, {
+    method: 'POST',
+    headers: {
+      ...(ADMIN_API_KEY ? { 'X-API-Key': ADMIN_API_KEY } : {}),
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  return response.json() as Promise<WireGuardConfigUploadResult>
 }
