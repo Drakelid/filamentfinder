@@ -11,11 +11,12 @@ JS_RENDERED_DOMAINS = {
     'elefun.no',
     'computersalg.no',
     'clasohlson.com',
-    '3djake.no',   # Products loaded via JS
-    'proshop.no',  # Blocks regular HTTP requests with 403
-    '3dnet.no',    # JSON-LD ItemList loaded via JS
-    'polyalkemi.no',  # WooCommerce with JS-loaded content
-    'multicom.no',    # JS-rendered product listings
+    '3djake.no',       # Products loaded via JS
+    'proshop.no',      # Blocks regular HTTP requests with 403
+    '3dnet.no',        # JSON-LD ItemList loaded via JS
+    'polyalkemi.no',   # Custom Knockout.js platform with JS-loaded content
+    'multicom.no',     # JS-rendered product listings
+    'csmegastore.no',  # Products loaded via JS (empty Items array in static HTML)
 }
 
 DOMAIN_READY_SELECTORS = {
@@ -25,10 +26,11 @@ DOMAIN_READY_SELECTORS = {
         'a[href*="/vare-"]',
     ],
     'polyalkemi.no': [
-        # Wait for WooCommerce product grid — any brand, not just Add North
-        'ul.products li.product',
-        '.woocommerce-loop-product__title',
-        '.woocommerce-Price-amount',
+        # polyalkemi.no uses a custom Knockout.js platform — NOT WooCommerce.
+        # Wait for the rendered product card container.
+        '.WebPubElement.pub-productlisting',
+        '.pub-productlisting',
+        '.ad-buy-button',  # "Kjøp" buttons confirm products have loaded
     ],
     '3dnet.no': [
         '.thumbnail[itemtype*="Product"]',
@@ -48,6 +50,12 @@ DOMAIN_READY_SELECTORS = {
         '.product-item',
         'li[class*="product"]',
         '[class*="price"]',
+    ],
+    'csmegastore.no': [
+        # Products are rendered via JS; wait for product anchor links
+        'a[href*="/i/"]',
+        '[class*="product"]',
+        'h3',
     ],
 }
 

@@ -28,6 +28,7 @@ class GenericParser(BaseParser):
         '#price',
         '.price-current',
         '.price-now',
+        'span.bold',  # polyalkemi.no Knockout.js rendered price
         'span[class*="price"]',
         'div[class*="price"]',
     ]
@@ -83,6 +84,8 @@ class GenericParser(BaseParser):
         '.product-wrap',  # 3dnet.no (Shopify Turbo theme)
         '.thumbnail .product-wrap',  # 3dnet.no combined
         '.product-list-item',  # Multicom.no
+        '.WebPubElement.pub-productlisting',  # polyalkemi.no (custom Knockout.js platform)
+        '.pub-productlisting',  # polyalkemi.no
     ]
     STOCK_TRUE_KEYWORDS = [
         'in stock',
@@ -123,6 +126,7 @@ class GenericParser(BaseParser):
         'coming soon',
         'not available',
         'notify me',
+        'ubekreftet',  # polyalkemi.no: "Ubekreftet 23.04.2026" = uncertain/delayed delivery
     ]
     STOCK_TRUE_CLASSES = [
         'in-stock',
@@ -450,18 +454,29 @@ class GenericParser(BaseParser):
             if href in seen_urls:
                 continue
             seen_urls.add(href)
-            # Price
+            # Price — try specific price element first, fall back to any price-like p/span
             price = None
             currency = None
-            price_elem = card.select_one('p.price, .price')
+            price_elem = card.select_one('p.price, .price, span.price, [class*="price"]')
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
                 price, currency = self._extract_price_from_text(price_text, url)
-            # Stock
+            # Stock — check element classes and text
             in_stock = None
-            stock_elem = card.select_one('p.stock-status, p.stock, .stock-status, .stock, .instock')
+            stock_elem = card.select_one(
+                'p.stock-status, p.stock, .stock-status, .stock, .instock, '
+                '.lagerstatus, [class*="stock"], [class*="lager"]'
+            )
             if stock_elem:
                 in_stock = self._detect_stock_from_element(stock_elem)
+            if in_stock is None:
+                # Fall back to scanning paragraph text for stock keywords
+                for p in card.find_all(['p', 'span']):
+                    text = p.get_text(strip=True)
+                    result = self._detect_stock_from_text(text)
+                    if result is not None:
+                        in_stock = result
+                        break
             # Image
             image_url = None
             img = card.find('img')
@@ -476,7 +491,7 @@ class GenericParser(BaseParser):
                 currency=currency,
                 image_url=image_url,
                 in_stock=in_stock,
-                confidence=0.4,
+                confidence=0.65,
             ))
         return products
 
@@ -489,6 +504,7 @@ class GenericParser(BaseParser):
             <strong>Varenr.: ID | SKU</strong>
             <h3>Product Name</h3>
             <p>NOK price</p>
+            <span class="stock-status">På lager</span>  (if present)
           </a>
         """
         products = []
@@ -512,27 +528,150 @@ class GenericParser(BaseParser):
             # Allow space/nbsp as thousands separator (e.g. "NOK 1 234,00").
             price = None
             currency = None
-            for elem in card.find_all(['div', 'p']):
+            for elem in card.find_all(['div', 'p', 'span']):
                 text = elem.get_text(strip=True)
                 if re.match(r'^NOK[\s\xa0]+\d[\d\s\xa0.,]*$', text, re.IGNORECASE):
                     price, currency = self._extract_price_from_text(text, url)
                     if price:
                         break
+            # Image
             image_url = None
             img = card.find('img')
             if img:
                 image_url = img.get('src') or img.get('data-src')
                 if image_url and not image_url.startswith('http'):
                     image_url = urljoin(url, image_url)
+            # SKU from <strong>Varenr.: ID | SKU</strong>
+            sku = None
+            strong_elem = card.find('strong')
+            if strong_elem:
+                strong_text = strong_elem.get_text(strip=True)
+                # "Varenr.: 12345 | ABC-123" → extract numeric ID or SKU part
+                sku_match = re.search(r'(?:Varenr\.?:?\s*)(\d+)', strong_text, re.IGNORECASE)
+                if sku_match:
+                    sku = sku_match.group(1)
+            # Stock — check for explicit stock elements or text
+            in_stock = None
+            stock_elem = card.select_one(
+                '.stock-status, .stock, .availability, [class*="stock"], [class*="lager"]'
+            )
+            if stock_elem:
+                in_stock = self._detect_stock_from_element(stock_elem)
+            if in_stock is None:
+                for elem in card.find_all(['span', 'p', 'div']):
+                    text = elem.get_text(strip=True)
+                    result = self._detect_stock_from_text(text)
+                    if result is not None:
+                        in_stock = result
+                        break
             products.append(ParsedProduct(
                 name=name,
                 url=href,
                 price=price,
                 currency=currency,
                 image_url=image_url,
-                in_stock=None,
-                confidence=0.4,
+                sku=sku,
+                in_stock=in_stock,
+                confidence=0.65,
             ))
+        return products
+
+    def _extract_from_polyalkemi(self, soup, url: str) -> List[ParsedProduct]:
+        """Extract products from polyalkemi.no listing pages.
+
+        polyalkemi.no uses a custom Knockout.js platform (NOT WooCommerce).
+        After browser rendering the DOM contains:
+          <div class="WebPubElement pub-productlisting">
+            <a href="/brand/ID/slug"><img src="..." /></a>
+            <a href="/brand/ID/slug"><span>Product Name</span></a>
+            <span>VarenrID</span>
+            <span class="bold">299,- kr</span>   ← Knockout rendered price
+            <span>20+ på lager</span>
+            <span class="DynamicStockTooltipContainer">
+              <span>Ubekreftet 23.04.2026</span>
+            </span>
+            <button class="btn btn-default ad-buy-button">Kjøp</button>
+          </div>
+        """
+        products = []
+        seen_urls: set = set()
+
+        for card in soup.select('.WebPubElement.pub-productlisting, .pub-productlisting'):
+            # Name and URL come from the anchor that contains a text <span>
+            name = None
+            product_url = None
+            anchors = card.find_all('a', href=True)
+            for anchor in anchors:
+                span = anchor.find('span')
+                candidate = span.get_text(strip=True) if span else anchor.get_text(strip=True)
+                if candidate and len(candidate) > 3:
+                    name = candidate
+                    href = anchor.get('href', '')
+                    product_url = href if href.startswith('http') else urljoin(url, href)
+                    break
+
+            if not name or not product_url:
+                continue
+            if product_url in seen_urls:
+                continue
+            seen_urls.add(product_url)
+
+            # Price: Knockout.js renders it into <span class="bold"> after page load
+            price = None
+            currency = None
+            price_elem = card.select_one('span.bold, .bold')
+            if price_elem:
+                price_text = price_elem.get_text(strip=True)
+                price, currency = self._extract_price_from_text(price_text, url)
+            if not price:
+                # Scan all spans for a price-like pattern (digits + kr/NOK)
+                for span in card.find_all('span'):
+                    text = span.get_text(strip=True)
+                    if re.search(r'\d[\d\s,.]*\s*(?:,-|kr|NOK)', text, re.IGNORECASE):
+                        price, currency = self._extract_price_from_text(text, url)
+                        if price:
+                            break
+
+            # Stock — prefer the DynamicStockTooltipContainer, then free-text spans
+            in_stock = None
+            tooltip = card.select_one('.DynamicStockTooltipContainer')
+            if tooltip:
+                in_stock = self._detect_stock_from_text(tooltip.get_text(strip=True))
+            if in_stock is None:
+                for span in card.find_all('span'):
+                    text = span.get_text(strip=True)
+                    if any(kw in text.lower() for kw in ('lager', 'bestillingsvare', 'ubekreftet', 'tilgjengelig')):
+                        in_stock = self._detect_stock_from_text(text)
+                        if in_stock is not None:
+                            break
+
+            # SKU from "VarenrXXX" span
+            sku = None
+            for span in card.find_all('span'):
+                text = span.get_text(strip=True)
+                if text.lower().startswith('varenr'):
+                    sku = re.sub(r'(?i)varenr\.?\s*:?\s*', '', text).strip()
+                    break
+
+            # Image
+            image_url = None
+            img = card.find('img')
+            if img:
+                image_url = img.get('src') or img.get('data-src')
+                if image_url and not image_url.startswith('http'):
+                    image_url = urljoin(url, image_url)
+
+            products.append(ParsedProduct(
+                name=name,
+                url=product_url,
+                price=price,
+                currency=currency,
+                image_url=image_url,
+                sku=sku,
+                in_stock=in_stock,
+                confidence=0.7,
+            ))
+
         return products
 
     def _is_product_page(self, soup, url: str) -> bool:
@@ -693,6 +832,11 @@ class GenericParser(BaseParser):
             if csm_products:
                 logger.info("Extracted products from csmegastore", url=url, count=len(csm_products))
                 return csm_products
+        if 'polyalkemi.no' in domain:
+            poly_products = self._extract_from_polyalkemi(soup, url)
+            if poly_products:
+                logger.info("Extracted products from polyalkemi", url=url, count=len(poly_products))
+                return poly_products
         
         # Pick the selector that matches the most elements (min 2) rather than the
         # first one that reaches 2 — avoids sidebars or widgets stealing the win.
@@ -726,6 +870,7 @@ class GenericParser(BaseParser):
                     '.site-productlist-name',  # Proshop.no
                     '.product-list-item__name',  # Multicom.no
                     'a[class*="name"], a[class*="title"]',
+                    'a > span',  # polyalkemi.no: name inside anchor span
                     '[class*="name"]',
                 ]
                 for sel in name_selectors:
@@ -765,6 +910,7 @@ class GenericParser(BaseParser):
                 '.product-list-item__price',  # Multicom.no
                 '.listing-price',  # Multicom.no (alt)
                 'p.price',  # avxperten.no
+                'span.bold',  # polyalkemi.no Knockout.js rendered price
                 '.price--current',
                 '.price--reduced',
                 '.sale-price',
@@ -791,7 +937,11 @@ class GenericParser(BaseParser):
             attr_stock = card.get('data-in-stock') or card.get('data-availability') or card.get('data-stock')
             card_stock = self._interpret_stock_value(attr_stock)
             if card_stock is None:
-                stock_elem = card.select_one('.category_prod_stock, .stock, .availability, .product-list-item__stock')
+                stock_elem = card.select_one(
+                    '.category_prod_stock, .stock, .availability, '
+                    '.product-list-item__stock, .site-stocklevel, '  # Proshop.no
+                    '.DynamicStockTooltipContainer, [class*="stock"], [class*="lager"]'
+                )
                 card_stock = self._detect_stock_from_element(stock_elem)
 
             products.append(ParsedProduct(
