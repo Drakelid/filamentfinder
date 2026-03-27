@@ -120,7 +120,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const dealsQuery = useQuery({
     queryKey: ['shell', 'deals-count'],
-    queryFn: () => fetchDeals({ limit: 200 }),
+    queryFn: () => fetchDeals({ limit: 100 }),
     staleTime: 5 * 60_000,
   })
 
