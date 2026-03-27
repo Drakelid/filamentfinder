@@ -44,8 +44,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
       - REDIS_URL=redis://redis:6379/0
@@ -71,8 +71,8 @@ services:
 
   worker:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker/Dockerfile
     environment:
       - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
       - REDIS_URL=redis://redis:6379/0
