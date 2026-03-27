@@ -164,32 +164,39 @@ class ProductMatcher:
 
     EXCLUDE_KEYWORDS = [
         # Printers and machines
-        '3d printer', 'printer kit', 'machine', 'print head',
+        '3d printer', 'printer kit', 'machine', 'print head', 'printhead',
+        '3d-skriver', '3d skriver',  # Norwegian "3D printer"
+        # Printer spec language — very strong indicator product IS a printer, not filament
+        'build volume', 'print speed', 'printing speed', 'layer height',
+        'heated bed', 'heated plate', 'auto leveling', 'auto-leveling',
+        'bed leveling', 'auto level', 'homing', 'print volume',
         # Parts and accessories
         'nozzle', 'hotend', 'hot end', 'extruder', 'heater block',
         'thermistor', 'heat break', 'heatbreak', 'bowden', 'ptfe tube',
-        'bed', 'glass bed', 'pei sheet', 'build plate', 'magnetic bed',
+        'toolhead', 'tool head', 'extruder assembly',
         'stepper', 'motor', 'driver', 'mainboard', 'motherboard',
         'power supply', 'psu', 'fan', 'blower', 'cooling',
         'belt', 'pulley', 'bearing', 'rod', 'rail', 'linear',
         'frame', 'profile', 'aluminum profile',
+        'magnetic bed', 'glass bed', 'build plate', 'pei sheet',
+        # Bambu multi-material system parts (not filament itself)
+        'ams lite', 'ams hub',
         # Tools
         'tool', 'scraper', 'spatula', 'glue', 'adhesive', 'tape',
         'wrench', 'hex key', 'allen', 'screwdriver', 'pliers',
         'tweezers', 'needle', 'cleaning needle', 'nozzle cleaner',
-        # Storage and handling
-        'enclosure', 'dryer', 'dry box', 'drybox', 'spool holder', 'rack',
+        # Storage and handling (softer ones — hard ones are in STRONG_EXCLUDE_PATTERNS)
+        'enclosure', 'dryer', 'drybox', 'rack',
         'filament sensor', 'runout sensor', 'humidity',
         # Upgrades
         'upgrade', 'mod', 'part', 'spare', 'replacement', 'kit',
         # Learning
         'book', 'guide', 'course', 'tutorial', 'manual',
-        # Resin printer parts
-        'vat', 'fep', 'fep film', 'screen', 'lcd panel', 'led array',
-        'build platform', 'resin tank', 'z-axis',
+        # Resin printer parts (softer ones — hard ones are in STRONG_EXCLUDE_PATTERNS)
+        'vat', 'fep', 'screen', 'lcd panel', 'led array',
+        'build platform', 'z-axis',
         # Cleaning
-        'ipa', 'isopropyl', 'alcohol', 'cleaner', 'wash station', 'cure station',
-        'curing station', 'wash and cure', 'wash & cure', 'mercury',
+        'ipa', 'isopropyl', 'alcohol', 'cleaner', 'mercury',
         # Software
         'software', 'slicer', 'license',
         # Model kits and toys (not 3D printing materials)
@@ -218,7 +225,7 @@ class ProductMatcher:
         'food', 'drink', 'snack', 'candy',
     ]
 
-    # Products that should NEVER match unless they explicitly contain filament/resin keywords
+    # Products that should NEVER match — checked before any scoring or soft-exclude override
     STRONG_EXCLUDE_PATTERNS = [
         r'italeri\s+\d+:\d+',  # Model kit scale patterns like "ITALERI 1:48"
         r'airfix\s+\d+:\d+',
@@ -238,6 +245,28 @@ class ProductMatcher:
         r'resin\s+(?:art|craft|tray)',
         r'epoxy\s+(?:art|craft|table|river)',
         r'uv\s+gel\s+nail',
+        # Filament-adjacent accessories — 'filament' appears in name but product is NOT filament
+        # These must be hard-excluded because 'filament' in the name overrides soft exclusions
+        r'\bfilament\s+dryer\b',
+        r'\bfilament\s+(?:sensor|detector|runout|run[\s\-]out)\b',
+        r'\bfilament\s+(?:storage|box|container|rack|case)\b',
+        r'\bfilament\s+(?:guide|feeder|hub|buffer|cutter)\b',
+        r'\bspool\s+holder\b',
+        r'\bdry\s+box\b',
+        # Resin printer accessories — 'resin' appears nearby but product is NOT resin
+        r'\bwash\s+(?:and|&)\s+cure\b',
+        r'\bwash\s+station\b',
+        r'\bcure\s+station\b',
+        r'\bcuring\s+station\b',
+        r'\bresin\s+tank\b',
+        r'\bfep\s+film\b',
+        # Printer bed / surface products — safe as hard excludes: these phrases would never
+        # appear as the product identity in a filament/resin product's primary text.
+        # NOTE: 'build plate' is intentionally omitted — it can appear in filament descriptions
+        # ("adheres well to textured build plates"), which would cause false rejections.
+        r'\bpei\s+(?:sheet|plate)\b',
+        r'\bspring\s+steel\s+sheet\b',
+        r'\bprint\s+bed\s+(?:adhesive|sticker|surface)\b',
     ]
 
     STRONG_FILAMENT_TERMS = [
@@ -341,7 +370,12 @@ class ProductMatcher:
             return True
         if re.search(r'\b\d+(?:[\.,]\d+)?\s?(oz|ounce|ounces)\b', text_lower):
             return True
-        if re.search(r'\b(365|385|395|405)\s?nm\b', text_lower) or 'uv' in text_lower:
+        if re.search(r'\b(365|385|395|405)\s?nm\b', text_lower):
+            return True
+        # Require specific UV-curing context, not just any 'uv' occurrence
+        if re.search(r'\buv[\s\-](?:cur|resin|harpiks|lys|light|lamp)', text_lower):
+            return True
+        if re.search(r'(?:uv|lysherdende|fotopolymer)\s+resin\b', text_lower):
             return True
         if any(term in text_lower for term in ['bottle', 'flask']):
             return True
@@ -477,8 +511,9 @@ class ProductMatcher:
 
         # --- URL hints ---
         url_hints_filament = any(kw in product_url_lower for kw in [
-            'filament', 'pla', 'petg', 'abs', 'asa', 'tpu', 'nylon', 'hips', 'pva',
+            'filament', 'pla', 'petg', 'asa',
             '1-75mm', '1.75mm', '2-85mm', '2.85mm', 'spool', 'fdm', 'fff',
+            # abs/tpu/nylon/hips/pva omitted — too common outside 3D-printing URLs
         ])
         url_hints_resin = any(kw in product_url_lower for kw in [
             'resin', 'resina', 'harpiks', 'sla', 'dlp', 'msla', 'lcd', '405nm',
@@ -520,12 +555,12 @@ class ProductMatcher:
         has_filament_context = self._has_filament_context(text_lower)
         has_resin_context = self._has_resin_context(text_lower)
 
-        # --- URL hint boosts ---
+        # --- URL hint boosts (reduced from 0.15 to avoid over-relying on URL alone) ---
         if url_hints_filament:
-            filament_score = min(filament_score + 0.15, 1.0)
+            filament_score = min(filament_score + 0.08, 1.0)
             filament_matched.append('url:filament-hint')
         if url_hints_resin:
-            resin_score = min(resin_score + 0.15, 1.0)
+            resin_score = min(resin_score + 0.08, 1.0)
             resin_matched.append('url:resin-hint')
 
         # --- Resin context boosts ---
