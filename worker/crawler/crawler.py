@@ -374,7 +374,7 @@ class Crawler:
             return True
         
         # Count "add to cart" occurrences - multiple means listing page
-        add_to_cart_patterns = ['add to cart', 'add-to-cart', 'addtocart', 'add to basket', 'add-to-basket', 'legg i handlekurv', 'legg til i handlekurv', 'kjøp nå', 'buy now']
+        add_to_cart_patterns = ['add to cart', 'add-to-cart', 'addtocart', 'add to basket', 'add-to-basket', 'legg i handlekurv', 'legg til i handlekurv', 'legg i handlevogn', 'legg til i handlevogn', 'kjøp nå', 'buy now']
         add_to_cart_count = sum(html_lower.count(p) for p in add_to_cart_patterns)
         
         # Check for single product page indicators in HTML
@@ -411,7 +411,11 @@ class Crawler:
             # If add-to-cart count is low, likely a product page
             if add_to_cart_count <= 2:
                 return True
-        
+
+        # ASP.NET product pages (e.g., avxperten.no) — slug.asp with at least one product indicator
+        if url_lower.endswith('.asp') and single_product_score >= 1:
+            return True
+
         return False
     
     async def _process_product(self, product: ParsedProduct, parser_name: str, page_url: str = '') -> Optional[Product]:

@@ -94,6 +94,7 @@ class GenericParser(BaseParser):
         'klar for levering',
         'klar for sending',
         'på fjernlager',
+        'fjernlager',  # avxperten.no remote warehouse
         'få på lager',
         'few left',
         'low stock',
@@ -418,6 +419,108 @@ class GenericParser(BaseParser):
         
         return products
     
+    def _extract_from_avxperten(self, soup, url: str) -> List[ParsedProduct]:
+        """Extract products from avxperten.no listing pages.
+
+        The listing HTML has sibling elements inside a generic card container:
+          <a href="product.asp"><img /></a>
+          <div class="product-name">Name</div>
+          <div class="product-price">Price kr</div>
+        """
+        products = []
+        for name_elem in soup.select('.product-name'):
+            name = name_elem.get_text(strip=True)
+            if not name:
+                continue
+            parent = name_elem.parent
+            if not parent:
+                continue
+            # Find the product .asp link in the same container (not checkout link)
+            product_url = None
+            for a in parent.find_all('a', href=True):
+                href = a.get('href', '')
+                if href.lower().endswith('.asp') and '/checkout/' not in href:
+                    product_url = urljoin(url, href)
+                    break
+            if not product_url:
+                continue
+            price = None
+            currency = None
+            price_elem = parent.select_one('.product-price')
+            if price_elem:
+                price_text = price_elem.get_text(strip=True)
+                price, currency = self._extract_price_from_text(price_text, url)
+            image_url = None
+            img = parent.find('img')
+            if img:
+                image_url = img.get('src') or img.get('data-src')
+                if image_url and not image_url.startswith('http'):
+                    image_url = urljoin(url, image_url)
+            products.append(ParsedProduct(
+                name=name,
+                url=product_url,
+                price=price,
+                currency=currency,
+                image_url=image_url,
+                in_stock=None,
+                confidence=0.4,
+            ))
+        return products
+
+    def _extract_from_csmegastore(self, soup, url: str) -> List[ParsedProduct]:
+        """Extract products from csmegastore.no listing pages.
+
+        The listing HTML wraps each product entirely in its anchor tag:
+          <a href="/i/{id}/{slug}">
+            <img src="..." />
+            <strong>Varenr.: ID | SKU</strong>
+            <h3>Product Name</h3>
+            <p>NOK price</p>
+          </a>
+        """
+        products = []
+        seen_urls: set = set()
+        for card in soup.select('a[href*="/i/"]'):
+            name_elem = card.select_one('h3, h2, h4')
+            if not name_elem:
+                continue
+            name = name_elem.get_text(strip=True)
+            if not name:
+                continue
+            href = card.get('href', '')
+            if not href:
+                continue
+            if not href.startswith('http'):
+                href = urljoin(url, href)
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+            # Price is in the first <p> containing digits
+            price = None
+            currency = None
+            for p in card.find_all('p'):
+                text = p.get_text(strip=True)
+                if any(c.isdigit() for c in text):
+                    price, currency = self._extract_price_from_text(text, url)
+                    if price:
+                        break
+            image_url = None
+            img = card.find('img')
+            if img:
+                image_url = img.get('src') or img.get('data-src')
+                if image_url and not image_url.startswith('http'):
+                    image_url = urljoin(url, image_url)
+            products.append(ParsedProduct(
+                name=name,
+                url=href,
+                price=price,
+                currency=currency,
+                image_url=image_url,
+                in_stock=None,
+                confidence=0.4,
+            ))
+        return products
+
     def _is_product_page(self, soup, url: str) -> bool:
         """Heuristically determine if this is a product page."""
         indicators = 0
@@ -547,6 +650,20 @@ class GenericParser(BaseParser):
         if data_attr_products:
             logger.info("Extracted products from data attributes", url=url, count=len(data_attr_products))
             return data_attr_products
+
+        # Site-specific extractors for non-standard card structures
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.lower()
+        if 'avxperten.no' in domain:
+            avx_products = self._extract_from_avxperten(soup, url)
+            if avx_products:
+                logger.info("Extracted products from avxperten", url=url, count=len(avx_products))
+                return avx_products
+        if 'csmegastore.no' in domain:
+            csm_products = self._extract_from_csmegastore(soup, url)
+            if csm_products:
+                logger.info("Extracted products from csmegastore", url=url, count=len(csm_products))
+                return csm_products
         
         product_cards = []
         matched_selector = None
@@ -713,6 +830,7 @@ class GenericParser(BaseParser):
             r'cat-p/p\d+',  # Multicom.no product pattern: /product-name/cat-p/p3340988
             r'/[^/]+/[a-z]{2,4}\d{2,}[a-z]*/',  # PolyAlkemi pattern: /brand/SKU/product-name (SKU like anep17aub)
             r'/[^/]+/[^/]+/[^/]+-[^/]+-[^/]+$',  # Generic 3-segment with dashes: /brand/sku/product-name-with-dashes
+            r'/[a-z0-9][a-z0-9-]+\.asp$',  # avxperten.no ASP.NET product slugs
         ]
         
         for a in soup.find_all('a', href=True):
@@ -733,7 +851,7 @@ class GenericParser(BaseParser):
                     links.add(href)
                     break
         
-        for card in soup.select('.product-card, .product-item, .product, [data-product], article[class*="product"], li[class*="product"], div[class*="product-card"], .grid-item, .site-productlist-item, .category_prod, .m-product-card, .plp-card, .product-list-item'):
+        for card in soup.select('.product-card, .product-item, .product, [data-product], article[class*="product"], li[class*="product"], div[class*="product-card"], .grid-item, .site-productlist-item, .category_prod, .m-product-card, .plp-card, .product-list-item, a[href*="/i/"]'):
             link = card.find('a', href=True)
             if link:
                 href = link.get('href')
