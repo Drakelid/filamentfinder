@@ -1,7 +1,7 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronsLeft, ChevronsRight, Clock3, Command, RefreshCw, Sparkles } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Clock3, Command, Menu, RefreshCw, Sparkles, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { api, fetchDeals } from '../../api'
 import { NAV_SECTIONS, resolvePageMeta } from './navigation'
@@ -76,6 +76,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 1280 : false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [updatedAt, setUpdatedAt] = useState(Date.now())
   const pageMeta = resolvePageMeta(location.pathname)
@@ -110,6 +111,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth >= 1024) {
+        setMobileNavOpen(false)
+      }
+    }
+
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
   }, [])
 
   const refreshShell = async () => {
@@ -149,29 +165,48 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-shell-900 text-slate-100">
+      {mobileNavOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setMobileNavOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
       <div className="flex min-h-screen">
         <aside
-          className={`sticky top-0 h-screen shrink-0 border-r border-slate-800/80 bg-shell-950/95 backdrop-blur-xl transition-all duration-200 ${
-            collapsed ? 'w-20' : 'w-72'
+          className={`fixed inset-y-0 left-0 z-40 h-screen shrink-0 border-r border-slate-800/80 bg-shell-950/95 backdrop-blur-xl transition-transform duration-200 ${
+            mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+          } w-72 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 lg:transition-all ${
+            collapsed ? 'lg:w-20' : 'lg:w-72'
           }`}
         >
           <div className="flex h-full flex-col gap-6 p-4">
-            <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+            <div className={`flex items-center gap-3 ${collapsed ? 'lg:justify-center' : ''}`}>
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-amber-400 text-slate-950 shadow-glow">
                 <Sparkles className="h-6 w-6" />
               </div>
-              {!collapsed && (
+              {(!collapsed || mobileNavOpen) && (
                 <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.35em] text-slate-500">FilamentFinder</p>
                   <h1 className="truncate text-lg font-semibold text-white">Control Center</h1>
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(false)}
+                className="ml-auto inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/60 p-2.5 text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white lg:hidden"
+                aria-label="Close navigation"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
             <button
               type="button"
               onClick={() => setCollapsed((value) => !value)}
-              className={`inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/60 p-2.5 text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white ${
+              className={`hidden items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/60 p-2.5 text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white lg:inline-flex ${
                 collapsed ? 'mx-auto' : 'self-start'
               }`}
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -182,7 +217,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <nav className="flex-1 space-y-6 overflow-y-auto scrollbar-hidden">
               {NAV_SECTIONS.map((section) => (
                 <div key={section.label} className="space-y-2">
-                  {!collapsed && (
+                  {(!collapsed || mobileNavOpen) && (
                     <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-500">
                       {section.label}
                     </p>
@@ -219,7 +254,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={refreshShell}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white lg:flex"
                 >
                   <RefreshCw className="h-4 w-4 shrink-0 text-amber-300" />
                   <span className="flex-1 text-left font-medium">Refresh dashboard</span>
@@ -229,14 +264,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
-        <main className="relative flex-1 overflow-hidden">
+        <main className="relative min-w-0 flex-1 overflow-hidden">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgb(var(--ff-brand-violet)_/_0.16),_transparent_28%),radial-gradient(circle_at_75%_12%,_rgb(var(--ff-brand-amber)_/_0.12),_transparent_24%),linear-gradient(180deg,_rgb(var(--ff-shell-900)),_rgb(var(--ff-shell-950)))]" />
-          <div className="relative z-10 flex min-h-screen flex-col gap-6 px-6 py-6 lg:px-8">
-            <header className="sticky top-4 z-20 flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-shell-800/90 px-5 py-4 shadow-soft backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
+          <div className="relative z-10 flex min-h-screen flex-col gap-4 px-4 py-4 sm:px-5 sm:py-5 lg:gap-6 lg:px-8 lg:py-6">
+            <header className="sticky top-3 z-20 flex flex-col gap-4 rounded-3xl border border-slate-800/80 bg-shell-800/90 px-4 py-4 shadow-soft backdrop-blur-xl sm:px-5 lg:top-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setMobileNavOpen(true)}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-700 bg-slate-900/60 p-2.5 text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 lg:hidden"
+                  aria-label="Open navigation"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-500">{pageMeta.section}</p>
                 <h2 className="truncate text-xl font-semibold text-white">{pageMeta.title}</h2>
                 <p className="mt-1 text-sm text-slate-400">{pageMeta.description}</p>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Badge tone="violet">
@@ -246,18 +291,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={refreshShell}
-                  className="inline-flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-2 text-sm font-medium text-violet-100 transition hover:bg-violet-500/20"
+                  className="inline-flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-100 transition hover:bg-violet-500/20 sm:px-4"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Refresh
+                  <span className="hidden sm:inline">Refresh</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPaletteOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 sm:px-4"
                 >
                   <Command className="h-4 w-4 text-violet-300" />
-                  Command
+                  <span className="hidden sm:inline">Command</span>
                 </button>
               </div>
             </header>

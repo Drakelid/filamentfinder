@@ -440,7 +440,7 @@ export default function ProductDetailPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20 sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Current price</p>
@@ -489,7 +489,7 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Price alert</p>
@@ -505,7 +505,7 @@ export default function ProductDetailPage() {
             )}
 
             {activeAlert ? (
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
                   <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Active threshold</div>
                   <div className="mt-1 font-mono text-lg font-semibold text-slate-50">
@@ -522,7 +522,7 @@ export default function ProductDetailPage() {
                 </button>
               </div>
             ) : latestPriceAmount !== null && latestCurrency ? (
-              <div className="flex items-end gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="flex-1">
                   <label className="mb-1 block text-xs uppercase tracking-[0.24em] text-slate-500">Target price</label>
                   <div className="flex items-center gap-2">
@@ -554,7 +554,7 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20 sm:p-6">
             <h2 className="text-xl font-semibold text-slate-50">Details</h2>
             <dl className="mt-4 space-y-4 text-sm">
               <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 py-2.5">

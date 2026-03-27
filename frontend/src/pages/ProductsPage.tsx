@@ -433,8 +433,8 @@ export default function ProductsPage() {
       </div>
 
       <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-black/20">
-        <div className="flex flex-wrap items-center gap-3">
-          <form onSubmit={handleSearch} className="relative min-w-[280px] flex-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <form onSubmit={handleSearch} className="relative min-w-0 flex-1">
             <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
@@ -464,7 +464,7 @@ export default function ProductsPage() {
           <button
             type="button"
             onClick={() => setShowFilters(!showFilters)}
-            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-3 text-sm transition-colors ${
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm transition-colors sm:w-auto ${
               showFilters || hasActiveFilters
                 ? 'border-violet-500/40 bg-violet-500/10 text-violet-100'
                 : 'border-slate-700 bg-slate-900/70 text-slate-300 hover:border-slate-600'
@@ -482,7 +482,7 @@ export default function ProductsPage() {
           <button
             type="button"
             onClick={() => window.open('/api/products/export', '_blank')}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-3 text-sm text-slate-300 transition-colors hover:border-slate-600 hover:bg-slate-800"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-3 text-sm text-slate-300 transition-colors hover:border-slate-600 hover:bg-slate-800 sm:w-auto"
           >
             Export CSV
           </button>
