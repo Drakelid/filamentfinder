@@ -11,7 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from worker.config import get_settings
+from worker.config import get_settings, refresh_settings
 from worker.database import get_db_session
 from worker.models import Source, Product, PriceObservation
 from worker.crawler.crawler import run_crawler
@@ -35,6 +35,10 @@ class ScanWorker:
         self.active_crawls: Set[int] = set()  # Track active source IDs
         self.crawl_semaphore = asyncio.Semaphore(settings.crawler_max_concurrent_sources)
         self.crawl_tasks: Set[asyncio.Task] = set()
+
+    def refresh_runtime_settings(self):
+        refresh_settings()
+        self.crawl_semaphore = asyncio.Semaphore(settings.crawler_max_concurrent_sources)
 
     def enqueue_scan_job(self, source_id: int, *, job_type: str = "scan", trigger: str = "scheduled") -> dict:
         """Enqueue a durable scan job."""
@@ -152,6 +156,7 @@ class ScanWorker:
     
     async def _execute_crawl(self, source_id: int) -> bool:
         """Execute the actual crawl for a source."""
+        self.refresh_runtime_settings()
         self.active_crawls.add(source_id)
         logger.info("Processing scan job", source_id=source_id, active_crawls=len(self.active_crawls))
         
@@ -203,6 +208,7 @@ class ScanWorker:
     
     async def run_scheduled_scans(self):
         """Run scans for all active sources concurrently."""
+        self.refresh_runtime_settings()
         logger.info("Running scheduled scans")
         
         db = get_db_session()
@@ -290,6 +296,7 @@ class ScanWorker:
         from sqlalchemy import func
         from urllib.parse import urlparse
         
+        self.refresh_runtime_settings()
         logger.info("Running scheduled price checks")
         
         # Calculate cutoff time (48 hours ago with some random jitter)
@@ -435,6 +442,7 @@ class ScanWorker:
     
     def setup_scheduler(self):
         """Setup the APScheduler for periodic scans."""
+        self.refresh_runtime_settings()
         if not settings.scan_schedule_enabled:
             logger.info("Scheduled scans disabled")
             return
@@ -506,6 +514,7 @@ class ScanWorker:
     async def run(self):
         """Run the worker."""
         logger.info("Starting scan worker")
+        self.refresh_runtime_settings()
         
         signal.signal(signal.SIGINT, self.handle_shutdown)
         signal.signal(signal.SIGTERM, self.handle_shutdown)

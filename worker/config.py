@@ -1,9 +1,28 @@
 import os
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
+from sqlalchemy import create_engine, text
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
-from functools import lru_cache
+
+
+CRAWLER_CONFIG_CASTERS = {
+    "crawler_user_agent": str,
+    "crawler_rate_limit": float,
+    "crawler_min_delay": float,
+    "crawler_max_delay": float,
+    "crawler_max_pages": int,
+    "crawler_max_depth": int,
+    "crawler_timeout": int,
+    "crawler_respect_robots_txt": bool,
+    "crawler_concurrent_requests": int,
+    "crawler_max_concurrent_sources": int,
+    "scan_schedule_enabled": bool,
+    "scan_schedule_cron": str,
+    "price_check_enabled": bool,
+    "price_check_interval_hours": int,
+    "price_check_batch_size": int,
+}
 
 
 def _rewrite_service_hostname(url: str, service_name: str, ip_address: str) -> str:
@@ -83,7 +102,73 @@ class WorkerSettings(BaseSettings):
         case_sensitive = False
         extra = "ignore"
 
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    return normalized in {"1", "true", "yes", "on"}
 
-@lru_cache()
+
+def _coerce_config_value(value: object, caster: type):
+    if caster is bool:
+        return _parse_bool(value)
+    if caster is int:
+        return int(str(value).strip())
+    if caster is float:
+        return float(str(value).strip())
+    return str(value)
+
+
+def _load_crawler_overrides(settings: WorkerSettings) -> dict[str, object]:
+    keys = tuple(CRAWLER_CONFIG_CASTERS.keys())
+    placeholders = ", ".join(f":key_{index}" for index, _ in enumerate(keys))
+    params = {f"key_{index}": key for index, key in enumerate(keys)}
+    engine = create_engine(settings.database_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            rows = connection.execute(
+                text(f"SELECT key, value FROM config WHERE key IN ({placeholders})"),
+                params,
+            )
+            overrides: dict[str, object] = {}
+            for key, raw_value in rows:
+                if raw_value is None:
+                    continue
+                caster = CRAWLER_CONFIG_CASTERS.get(key)
+                if caster is None:
+                    continue
+                try:
+                    overrides[key] = _coerce_config_value(raw_value, caster)
+                except (TypeError, ValueError):
+                    continue
+            return overrides
+    except Exception:
+        return {}
+    finally:
+        engine.dispose()
+
+
+_settings: WorkerSettings | None = None
+
+
+def _ensure_settings() -> WorkerSettings:
+    global _settings
+    if _settings is None:
+        _settings = WorkerSettings()
+        refresh_settings()
+    return _settings
+
+
+def refresh_settings() -> WorkerSettings:
+    global _settings
+    settings = _settings if _settings is not None else WorkerSettings()
+    overrides = _load_crawler_overrides(settings)
+    for key in CRAWLER_CONFIG_CASTERS:
+        if key in overrides:
+            setattr(settings, key, overrides[key])
+    _settings = settings
+    return settings
+
+
 def get_settings() -> WorkerSettings:
-    return WorkerSettings()
+    return _ensure_settings()

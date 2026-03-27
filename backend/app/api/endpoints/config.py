@@ -23,6 +23,8 @@ from app.models.config import Config
 from app.schemas.config import (
     ConfigResponse,
     ConfigUpdate,
+    CrawlerConfigResponse,
+    CrawlerConfigUpdate,
     VPNConfigUpdate,
     VPNConfigResponse,
     VPNStatusResponse,
@@ -36,6 +38,23 @@ GLUETUN_WIREGUARD_PROFILES_DIR = GLUETUN_WIREGUARD_DIR / "profiles"
 WIREGUARD_PRIVATE_KEY_PATTERN = re.compile(r"^\s*PrivateKey\s*=\s*(.+?)\s*$", re.MULTILINE)
 WIREGUARD_ADDRESS_PATTERN = re.compile(r"^\s*Address\s*=\s*(.+?)\s*$", re.MULTILINE)
 WIREGUARD_ENDPOINT_PATTERN = re.compile(r"^(\s*Endpoint\s*=\s*)([^:\s]+)(:\d+\s*)$", re.MULTILINE)
+CRAWLER_CONFIG_DESCRIPTIONS = {
+    "crawler_user_agent": "Crawler user agent",
+    "crawler_rate_limit": "Crawler requests per second target",
+    "crawler_min_delay": "Crawler minimum delay between requests in seconds",
+    "crawler_max_delay": "Crawler maximum delay between requests in seconds",
+    "crawler_max_pages": "Crawler maximum pages per source run",
+    "crawler_max_depth": "Crawler maximum link depth per source run",
+    "crawler_timeout": "Crawler HTTP timeout in seconds",
+    "crawler_respect_robots_txt": "Whether the crawler respects robots.txt",
+    "crawler_concurrent_requests": "Crawler concurrent requests per domain",
+    "crawler_max_concurrent_sources": "Maximum sources crawled simultaneously",
+    "scan_schedule_enabled": "Whether scheduled scans are enabled",
+    "scan_schedule_cron": "Scheduled scan cron expression",
+    "price_check_enabled": "Whether periodic product price checks are enabled",
+    "price_check_interval_hours": "Hours between product price checks",
+    "price_check_batch_size": "Batch size for periodic product price checks",
+}
 
 
 @lru_cache()
@@ -318,6 +337,64 @@ def get_effective_proxy_url(db: Session) -> str:
     return configured_proxy or env_proxy
 
 
+def _parse_bool(value: str | bool | None, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _parse_int(value: str | None, default: int) -> int:
+    try:
+        return int(str(value).strip()) if value is not None and str(value).strip() else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_float(value: str | None, default: float) -> float:
+    try:
+        return float(str(value).strip()) if value is not None and str(value).strip() else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _serialize_bool(value: bool) -> str:
+    return "true" if value else "false"
+
+
+def get_crawler_config_payload(db: Session) -> CrawlerConfigResponse:
+    settings = get_settings()
+    return CrawlerConfigResponse(
+        user_agent=get_config_value(db, "crawler_user_agent", settings.crawler_user_agent) or settings.crawler_user_agent,
+        rate_limit=_parse_float(get_config_value(db, "crawler_rate_limit", str(settings.crawler_rate_limit)), settings.crawler_rate_limit),
+        min_delay=_parse_float(get_config_value(db, "crawler_min_delay", "2.0"), 2.0),
+        max_delay=_parse_float(get_config_value(db, "crawler_max_delay", "5.0"), 5.0),
+        max_pages=_parse_int(get_config_value(db, "crawler_max_pages", str(settings.crawler_max_pages)), settings.crawler_max_pages),
+        max_depth=_parse_int(get_config_value(db, "crawler_max_depth", str(settings.crawler_max_depth)), settings.crawler_max_depth),
+        timeout=_parse_int(get_config_value(db, "crawler_timeout", str(settings.crawler_timeout)), settings.crawler_timeout),
+        respect_robots_txt=_parse_bool(
+            get_config_value(db, "crawler_respect_robots_txt", _serialize_bool(settings.crawler_respect_robots_txt)),
+            settings.crawler_respect_robots_txt,
+        ),
+        concurrent_requests=_parse_int(get_config_value(db, "crawler_concurrent_requests", "1"), 1),
+        max_concurrent_sources=_parse_int(get_config_value(db, "crawler_max_concurrent_sources", "6"), 6),
+        scan_schedule_enabled=_parse_bool(
+            get_config_value(db, "scan_schedule_enabled", _serialize_bool(settings.scan_schedule_enabled)),
+            settings.scan_schedule_enabled,
+        ),
+        scan_schedule_cron=get_config_value(db, "scan_schedule_cron", settings.scan_schedule_cron) or settings.scan_schedule_cron,
+        price_check_enabled=_parse_bool(get_config_value(db, "price_check_enabled", "true"), True),
+        price_check_interval_hours=_parse_int(get_config_value(db, "price_check_interval_hours", "48"), 48),
+        price_check_batch_size=_parse_int(get_config_value(db, "price_check_batch_size", "50"), 50),
+    )
+
+
 @router.get("/vpn", response_model=VPNConfigResponse)
 def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
@@ -421,6 +498,39 @@ async def upload_wireguard_config(
         restarted=restart_error is None,
         restart_error=restart_error,
     )
+
+
+@router.get("/crawler", response_model=CrawlerConfigResponse)
+def get_crawler_config(db: Session = Depends(get_db)):
+    """Get crawler configuration."""
+    return get_crawler_config_payload(db)
+
+
+@router.put("/crawler", response_model=CrawlerConfigResponse)
+def update_crawler_config(config: CrawlerConfigUpdate, db: Session = Depends(get_db)):
+    """Update crawler configuration."""
+    values = {
+        "crawler_user_agent": config.user_agent,
+        "crawler_rate_limit": str(config.rate_limit),
+        "crawler_min_delay": str(config.min_delay),
+        "crawler_max_delay": str(config.max_delay),
+        "crawler_max_pages": str(config.max_pages),
+        "crawler_max_depth": str(config.max_depth),
+        "crawler_timeout": str(config.timeout),
+        "crawler_respect_robots_txt": _serialize_bool(config.respect_robots_txt),
+        "crawler_concurrent_requests": str(config.concurrent_requests),
+        "crawler_max_concurrent_sources": str(config.max_concurrent_sources),
+        "scan_schedule_enabled": _serialize_bool(config.scan_schedule_enabled),
+        "scan_schedule_cron": config.scan_schedule_cron.strip(),
+        "price_check_enabled": _serialize_bool(config.price_check_enabled),
+        "price_check_interval_hours": str(config.price_check_interval_hours),
+        "price_check_batch_size": str(config.price_check_batch_size),
+    }
+
+    for key, value in values.items():
+        set_config_value(db, key, value, description=CRAWLER_CONFIG_DESCRIPTIONS.get(key))
+
+    return get_crawler_config_payload(db)
 
 
 @router.put("/vpn", response_model=VPNConfigResponse)

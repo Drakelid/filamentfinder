@@ -106,6 +106,24 @@ export interface VPNConfig {
   current_ip: string | null
 }
 
+export interface CrawlerConfig {
+  user_agent: string
+  rate_limit: number
+  min_delay: number
+  max_delay: number
+  max_pages: number
+  max_depth: number
+  timeout: number
+  respect_robots_txt: boolean
+  concurrent_requests: number
+  max_concurrent_sources: number
+  scan_schedule_enabled: boolean
+  scan_schedule_cron: string
+  price_check_enabled: boolean
+  price_check_interval_hours: number
+  price_check_batch_size: number
+}
+
 export interface VPNStatus {
   connected: boolean
   ip: string | null
@@ -388,6 +406,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 export const api = {
   config: {
     getVpn: () => fetchApi<VPNConfig>('/config/vpn'),
+    getCrawler: () => fetchApi<CrawlerConfig>('/config/crawler'),
     updateVpn: (data: {
       account_number?: string
       socks_proxy?: string
@@ -395,6 +414,8 @@ export const api = {
       auto_rotate: boolean
       rotate_interval_minutes: number
     }) => fetchApi<VPNConfig>('/config/vpn', { method: 'PUT', body: JSON.stringify(data) }),
+    updateCrawler: (data: CrawlerConfig) =>
+      fetchApi<CrawlerConfig>('/config/crawler', { method: 'PUT', body: JSON.stringify(data) }),
     testVpn: () => fetchApi<VPNStatus>('/config/vpn/test', { method: 'POST' }),
   },
 

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
@@ -69,3 +69,39 @@ class WireGuardConfigUploadResponse(BaseModel):
     profile_count: int
     restarted: bool
     restart_error: Optional[str] = None
+
+
+class CrawlerConfigResponse(BaseModel):
+    user_agent: str
+    rate_limit: float
+    min_delay: float
+    max_delay: float
+    max_pages: int
+    max_depth: int
+    timeout: int
+    respect_robots_txt: bool
+    concurrent_requests: int
+    max_concurrent_sources: int
+    scan_schedule_enabled: bool
+    scan_schedule_cron: str
+    price_check_enabled: bool
+    price_check_interval_hours: int
+    price_check_batch_size: int
+
+
+class CrawlerConfigUpdate(BaseModel):
+    user_agent: str = Field(min_length=1, max_length=512)
+    rate_limit: float = Field(ge=0)
+    min_delay: float = Field(ge=0)
+    max_delay: float = Field(ge=0)
+    max_pages: int = Field(ge=1, le=10000)
+    max_depth: int = Field(ge=0, le=20)
+    timeout: int = Field(ge=1, le=600)
+    respect_robots_txt: bool
+    concurrent_requests: int = Field(ge=1, le=50)
+    max_concurrent_sources: int = Field(ge=1, le=100)
+    scan_schedule_enabled: bool
+    scan_schedule_cron: str = Field(min_length=5, max_length=128)
+    price_check_enabled: bool
+    price_check_interval_hours: int = Field(ge=1, le=720)
+    price_check_batch_size: int = Field(ge=1, le=10000)

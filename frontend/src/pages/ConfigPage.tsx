@@ -1,13 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { CheckCircle, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
-import { api, uploadWireguardConfig, VPNConfig, VPNStatus, WireGuardConfigUploadResult } from '../api'
+import { api, CrawlerConfig, uploadWireguardConfig, VPNConfig, VPNStatus, WireGuardConfigUploadResult } from '../api'
 import { LoadingState, SectionCard, TabStrip, cx } from '../components/admin/AdminUI'
 
 const TABS = ['VPN & Proxy', 'Crawler Settings', 'Notifications', 'Data Management']
+const DEFAULT_CRAWLER_CONFIG: CrawlerConfig = {
+  user_agent: 'FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)',
+  rate_limit: 1,
+  min_delay: 2,
+  max_delay: 5,
+  max_pages: 100,
+  max_depth: 3,
+  timeout: 30,
+  respect_robots_txt: true,
+  concurrent_requests: 1,
+  max_concurrent_sources: 6,
+  scan_schedule_enabled: true,
+  scan_schedule_cron: '0 6 * * *',
+  price_check_enabled: true,
+  price_check_interval_hours: 48,
+  price_check_batch_size: 50,
+}
 
 export default function ConfigPage() {
   const [vpnConfig, setVpnConfig] = useState<VPNConfig | null>(null)
+  const [crawlerConfig, setCrawlerConfig] = useState<CrawlerConfig>(DEFAULT_CRAWLER_CONFIG)
   const [accountNumber, setAccountNumber] = useState('')
   const [socksProxy, setSocksProxy] = useState('')
   const [showAccountNumber, setShowAccountNumber] = useState(false)
@@ -30,6 +48,13 @@ export default function ConfigPage() {
     retry: 1,
   })
 
+  const crawlerConfigQuery = useQuery<CrawlerConfig>({
+    queryKey: ['crawler-config'],
+    queryFn: api.config.getCrawler,
+    staleTime: Infinity,
+    retry: 1,
+  })
+
   useEffect(() => {
     if (!vpnConfigQuery.data) return
     setVpnConfig(vpnConfigQuery.data)
@@ -37,6 +62,11 @@ export default function ConfigPage() {
     setAutoRotate(vpnConfigQuery.data.auto_rotate)
     setRotateInterval(vpnConfigQuery.data.rotate_interval_minutes)
   }, [vpnConfigQuery.data])
+
+  useEffect(() => {
+    if (!crawlerConfigQuery.data) return
+    setCrawlerConfig(crawlerConfigQuery.data)
+  }, [crawlerConfigQuery.data])
 
   const saveMutation = useMutation<VPNConfig, Error, void>({
     mutationFn: () => {
@@ -99,7 +129,24 @@ export default function ConfigPage() {
     onError: (err: Error) => setError(err.message),
   })
 
-  const configReady = !vpnConfigQuery.isLoading
+  const saveCrawlerMutation = useMutation<CrawlerConfig, Error, void>({
+    mutationFn: () => api.config.updateCrawler(crawlerConfig),
+    onMutate: () => {
+      setSaving(true)
+      setError(null)
+      setSaveSuccess(false)
+      setUploadSuccess(null)
+    },
+    onSuccess: (data) => {
+      setCrawlerConfig(data)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    },
+    onError: (err: Error) => setError(err.message),
+    onSettled: () => setSaving(false),
+  })
+
+  const configReady = !vpnConfigQuery.isLoading && !crawlerConfigQuery.isLoading
   const displayedConfig: VPNConfig = vpnConfig ?? {
     gluetun_mode: false,
     account_number_set: false,
@@ -120,7 +167,7 @@ export default function ConfigPage() {
   const vpnConfigured = displayedConfig.enabled && (displayedConfig.proxy_configured || displayedConfig.gluetun_mode)
   const vpnVerified = testResult?.connected === true
 
-  if (vpnConfigQuery.isLoading) return <LoadingState label="Loading configuration" />
+  if (vpnConfigQuery.isLoading || crawlerConfigQuery.isLoading) return <LoadingState label="Loading configuration" />
 
   return (
     <div className="space-y-6">
@@ -306,9 +353,196 @@ export default function ConfigPage() {
       )}
 
       {activeTab === 'Crawler Settings' && (
-        <SectionCard eyebrow="Crawler" title="Crawler settings" description="These crawler settings still come from environment variables in this deployment.">
-          <p className="text-sm text-slate-400">The crawler runtime is configured outside the UI. This tab exists to keep the page organized and make room for future controls.</p>
-        </SectionCard>
+        <div className="space-y-6">
+          <SectionCard eyebrow="Crawler" title="Crawler settings" description="Tune crawl cadence, depth, concurrency, and price-check behavior from the UI.">
+            <div className="space-y-6">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="space-y-2 lg:col-span-2">
+                  <span className="text-sm font-medium text-slate-300">User agent</span>
+                  <input
+                    type="text"
+                    value={crawlerConfig.user_agent}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, user_agent: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Rate limit</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={crawlerConfig.rate_limit}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, rate_limit: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                  <p className="text-xs text-slate-500">Requests per second target before source-specific delays apply.</p>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Timeout</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={crawlerConfig.timeout}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, timeout: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                  <p className="text-xs text-slate-500">Per-request timeout in seconds.</p>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Minimum delay</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={crawlerConfig.min_delay}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, min_delay: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                  <p className="text-xs text-slate-500">Base delay between product price checks.</p>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Maximum delay</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={crawlerConfig.max_delay}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, max_delay: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                  <p className="text-xs text-slate-500">Upper bound for randomized delay jitter.</p>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Max pages per source</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={crawlerConfig.max_pages}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, max_pages: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Max depth</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={crawlerConfig.max_depth}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, max_depth: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Concurrent requests</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={crawlerConfig.concurrent_requests}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, concurrent_requests: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Max concurrent sources</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={crawlerConfig.max_concurrent_sources}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, max_concurrent_sources: Number(e.target.value) }))}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between rounded-3xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">Respect robots.txt</p>
+                    <p className="text-sm text-slate-500">Apply robots.txt rules during listing and product crawling.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCrawlerConfig((current) => ({ ...current, respect_robots_txt: !current.respect_robots_txt }))}
+                    className={cx('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', crawlerConfig.respect_robots_txt ? 'bg-violet-600' : 'bg-slate-700')}
+                  >
+                    <span className={cx('inline-block h-4 w-4 transform rounded-full bg-white transition-transform', crawlerConfig.respect_robots_txt ? 'translate-x-6' : 'translate-x-1')} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between rounded-3xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">Scheduled scans</p>
+                    <p className="text-sm text-slate-500">Enable the worker cron schedule for full-source scans.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCrawlerConfig((current) => ({ ...current, scan_schedule_enabled: !current.scan_schedule_enabled }))}
+                    className={cx('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', crawlerConfig.scan_schedule_enabled ? 'bg-violet-600' : 'bg-slate-700')}
+                  >
+                    <span className={cx('inline-block h-4 w-4 transform rounded-full bg-white transition-transform', crawlerConfig.scan_schedule_enabled ? 'translate-x-6' : 'translate-x-1')} />
+                  </button>
+                </div>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Scan schedule cron</span>
+                  <input
+                    type="text"
+                    value={crawlerConfig.scan_schedule_cron}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, scan_schedule_cron: e.target.value }))}
+                    disabled={!crawlerConfig.scan_schedule_enabled}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 disabled:opacity-50"
+                  />
+                </label>
+                <div className="flex items-center justify-between rounded-3xl border border-slate-800 bg-slate-950/40 p-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">Periodic price checks</p>
+                    <p className="text-sm text-slate-500">Revisit stale product pages between full-source crawls.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCrawlerConfig((current) => ({ ...current, price_check_enabled: !current.price_check_enabled }))}
+                    className={cx('relative inline-flex h-6 w-11 items-center rounded-full transition-colors', crawlerConfig.price_check_enabled ? 'bg-violet-600' : 'bg-slate-700')}
+                  >
+                    <span className={cx('inline-block h-4 w-4 transform rounded-full bg-white transition-transform', crawlerConfig.price_check_enabled ? 'translate-x-6' : 'translate-x-1')} />
+                  </button>
+                </div>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Price check interval (hours)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={crawlerConfig.price_check_interval_hours}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, price_check_interval_hours: Number(e.target.value) }))}
+                    disabled={!crawlerConfig.price_check_enabled}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 disabled:opacity-50"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Price check batch size</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={crawlerConfig.price_check_batch_size}
+                    onChange={(e) => setCrawlerConfig((current) => ({ ...current, price_check_batch_size: Number(e.target.value) }))}
+                    disabled={!crawlerConfig.price_check_enabled}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 disabled:opacity-50"
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-3 border-t border-slate-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => saveCrawlerMutation.mutate()}
+                  disabled={saving || !configReady}
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save crawler settings
+                </button>
+              </div>
+            </div>
+          </SectionCard>
+        </div>
       )}
 
       {activeTab === 'Notifications' && (
