@@ -234,7 +234,7 @@ class GenericParser(BaseParser):
                     price_cents = first_variant.get('price')
                     if price_cents:
                         price = Decimal(str(price_cents)) / 100
-                    currency = 'NOK'  # Default for Norwegian stores
+                    currency = self._extract_currency(url=url)  # Infer from store URL rather than hardcoding
                 
                 # Get image URL
                 image_url = None
@@ -694,14 +694,15 @@ class GenericParser(BaseParser):
                 logger.info("Extracted products from csmegastore", url=url, count=len(csm_products))
                 return csm_products
         
+        # Pick the selector that matches the most elements (min 2) rather than the
+        # first one that reaches 2 — avoids sidebars or widgets stealing the win.
         product_cards = []
         matched_selector = None
         for selector in self.PRODUCT_CARD_SELECTORS:
             cards = soup.select(selector)
-            if len(cards) >= 2:
+            if len(cards) >= 2 and len(cards) > len(product_cards):
                 product_cards = cards
                 matched_selector = selector
-                break
         
         logger.info(
             "Product card detection",

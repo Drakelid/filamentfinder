@@ -56,6 +56,7 @@ CRAWLER_CONFIG_DESCRIPTIONS = {
     "price_check_enabled": "Whether periodic product price checks are enabled",
     "price_check_interval_hours": "Hours between product price checks",
     "price_check_batch_size": "Batch size for periodic product price checks",
+    "crawler_js_domains": "Extra comma-separated domains that require Playwright browser rendering",
 }
 NOTIFICATION_CONFIG_DESCRIPTIONS = {
     "smtp_host": "SMTP host for outbound email notifications",
@@ -404,6 +405,7 @@ def get_crawler_config_payload(db: Session) -> CrawlerConfigResponse:
         price_check_enabled=_parse_bool(get_config_value(db, "price_check_enabled", "true"), True),
         price_check_interval_hours=_parse_int(get_config_value(db, "price_check_interval_hours", "48"), 48),
         price_check_batch_size=_parse_int(get_config_value(db, "price_check_batch_size", "50"), 50),
+        js_domains=get_config_value(db, "crawler_js_domains", "") or "",
     )
 
 
@@ -553,6 +555,7 @@ def update_crawler_config(config: CrawlerConfigUpdate, db: Session = Depends(get
         "price_check_enabled": _serialize_bool(config.price_check_enabled),
         "price_check_interval_hours": str(config.price_check_interval_hours),
         "price_check_batch_size": str(config.price_check_batch_size),
+        "crawler_js_domains": config.js_domains.strip(),
     }
 
     for key, value in values.items():

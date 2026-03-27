@@ -9,6 +9,7 @@ from shared.network import normalize_container_service_urls as _normalize_contai
 
 
 DB_CONFIG_CASTERS = {
+    "crawler_js_domains": str,
     "crawler_user_agent": str,
     "crawler_rate_limit": float,
     "crawler_min_delay": float,
@@ -40,6 +41,7 @@ class WorkerSettings(BaseSettings):
     database_url: str = "postgresql://filamentfinder:filamentfinder@localhost:5432/filamentfinder"
     redis_url: str = "redis://localhost:6379/0"
     
+    crawler_js_domains: str = ""   # Extra comma-separated domains that need Playwright, beyond the hardcoded list
     crawler_user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
     crawler_rate_limit: float = 0.5  # Max 0.5 requests per second (2 seconds between requests)
     crawler_min_delay: float = 2.0  # Minimum delay between requests in seconds

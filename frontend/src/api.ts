@@ -127,6 +127,7 @@ export interface CrawlerConfig {
   price_check_enabled: boolean
   price_check_interval_hours: number
   price_check_batch_size: number
+  js_domains: string
 }
 
 export interface NotificationConfig {

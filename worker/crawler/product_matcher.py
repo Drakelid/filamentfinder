@@ -565,7 +565,7 @@ class ProductMatcher:
 
         # --- Resin context boosts ---
         if has_resin_context:
-            if re.search(r'\b\d{2,4}\s?(ml|g|gram|grams|g\b)\b', text_lower):
+            if re.search(r'\b\d+(?:[.,]\d+)?\s?(ml|g|gram|grams)\b', text_lower):
                 resin_score = min(resin_score + 0.05, 1.0)
                 if 'volume:ml' not in resin_matched:
                     resin_matched.append('volume:ml')

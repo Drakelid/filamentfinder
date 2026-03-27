@@ -87,6 +87,7 @@ class CrawlerConfigResponse(BaseModel):
     price_check_enabled: bool
     price_check_interval_hours: int
     price_check_batch_size: int
+    js_domains: str
 
 
 class CrawlerConfigUpdate(BaseModel):
@@ -105,6 +106,7 @@ class CrawlerConfigUpdate(BaseModel):
     price_check_enabled: bool
     price_check_interval_hours: int = Field(ge=1, le=720)
     price_check_batch_size: int = Field(ge=1, le=10000)
+    js_domains: str = Field(default="", max_length=4096)
 
 
 class NotificationConfigResponse(BaseModel):

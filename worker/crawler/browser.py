@@ -53,11 +53,24 @@ DOMAIN_READY_SELECTORS = {
 
 
 def requires_browser(url: str) -> bool:
-    """Check if URL requires browser rendering."""
+    """Check if URL requires browser rendering.
+
+    Checks both the hardcoded JS_RENDERED_DOMAINS set and any extra domains
+    added at runtime via the crawler_js_domains config setting.
+    """
     from urllib.parse import urlparse
+    from worker.config import get_settings
     domain = urlparse(url).netloc.lower()
-    # Check if domain or parent domain is in the list
-    for js_domain in JS_RENDERED_DOMAINS:
+
+    all_domains = set(JS_RENDERED_DOMAINS)
+    extra = get_settings().crawler_js_domains
+    if extra:
+        for d in extra.split(','):
+            d = d.strip().lower()
+            if d:
+                all_domains.add(d)
+
+    for js_domain in all_domains:
         if domain == js_domain or domain.endswith('.' + js_domain):
             return True
     return False

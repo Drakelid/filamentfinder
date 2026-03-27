@@ -523,7 +523,19 @@ class Crawler:
                     last_observation.currency != product.currency
                 )
                 
-                if price_changed and (last_observation.price_amount or product.price):
+                currency_mismatch = (
+                    last_observation.currency and product.currency and
+                    last_observation.currency != product.currency
+                )
+                if currency_mismatch:
+                    logger.warning(
+                        "Currency changed between observations — skipping PriceChange",
+                        product_id=db_product.id,
+                        old_currency=last_observation.currency,
+                        new_currency=product.currency,
+                    )
+
+                if price_changed and not currency_mismatch and (last_observation.price_amount or product.price):
                     change_percent = None
                     if last_observation.price_amount and product.price:
                         change_percent = float(
@@ -780,20 +792,23 @@ class Crawler:
                 if crawl_run and crawl_run.finished_at and crawl_run.started_at:
                     duration_seconds = (crawl_run.finished_at - crawl_run.started_at).total_seconds()
 
-                # Update duration stats
+                # Update duration stats (exponential moving averages)
                 if duration_seconds is not None:
                     stats = source.crawl_duration_stats or {}
                     previous_avg = stats.get("avg_seconds")
                     if previous_avg is None:
                         avg_seconds = duration_seconds
                     else:
-                        avg_seconds = (previous_avg + duration_seconds) / 2
+                        # EMA alpha=0.1: smoothly tracks the mean without being dominated by any single run
+                        avg_seconds = previous_avg * 0.9 + duration_seconds * 0.1
 
                     p95 = stats.get("p95_seconds")
                     if p95 is None:
                         p95_seconds = duration_seconds
                     else:
-                        p95_seconds = max(p95, duration_seconds * 0.95 + p95 * 0.05)
+                        # EMA that weights the existing p95 heavily (0.95) and the new sample
+                        # lightly (0.05) so it rises quickly on slow runs but falls slowly.
+                        p95_seconds = max(p95 * 0.95 + duration_seconds * 0.05, duration_seconds)
 
                     stats_update = {
                         "avg_seconds": avg_seconds,

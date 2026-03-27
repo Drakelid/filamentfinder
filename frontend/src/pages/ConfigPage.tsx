@@ -30,6 +30,7 @@ const DEFAULT_CRAWLER_CONFIG: CrawlerConfig = {
   price_check_enabled: true,
   price_check_interval_hours: 48,
   price_check_batch_size: 50,
+  js_domains: '',
 }
 const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
   smtp_host: null,
@@ -611,6 +612,20 @@ export default function ConfigPage() {
                   />
                 </label>
               </div>
+
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-slate-300">JS-rendered domains</span>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. example.com, shop.example.org"
+                  value={crawlerConfig.js_domains}
+                  onChange={(e) => setCrawlerConfig((current) => ({ ...current, js_domains: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder:text-slate-500"
+                />
+                <p className="text-xs text-slate-500">
+                  Comma-separated domains that require Playwright (JavaScript rendering) to scrape. Added on top of the built-in list.
+                </p>
+              </label>
 
               <div className="flex flex-wrap gap-3 border-t border-slate-800 pt-4">
                 <button

@@ -33,12 +33,10 @@ class ScanWorker:
         self.redis_client = redis.from_url(settings.redis_url, decode_responses=True)
         self.running = True
         self.active_crawls: Set[int] = set()  # Track active source IDs
-        self.crawl_semaphore = asyncio.Semaphore(settings.crawler_max_concurrent_sources)
         self.crawl_tasks: Set[asyncio.Task] = set()
 
     def refresh_runtime_settings(self):
         refresh_settings()
-        self.crawl_semaphore = asyncio.Semaphore(settings.crawler_max_concurrent_sources)
 
     def enqueue_scan_job(self, source_id: int, *, job_type: str = "scan", trigger: str = "scheduled") -> dict:
         """Enqueue a durable scan job."""
@@ -140,11 +138,6 @@ class ScanWorker:
                 attempts=attempts,
             )
     
-    async def _run_crawl_with_semaphore(self, source_id: int):
-        """Run a crawl with semaphore to limit concurrency."""
-        async with self.crawl_semaphore:
-            await self._execute_crawl(source_id)
-
     def _get_source_status(self, source_id: int) -> Optional[str]:
         """Get the persisted status for a source after a crawl."""
         db = get_db_session()
