@@ -508,12 +508,12 @@ class GenericParser(BaseParser):
             if href in seen_urls:
                 continue
             seen_urls.add(href)
-            # Price is in the first <p> containing digits
+            # Price is in a plain <div>NOK 154,00</div> or <p>NOK 154,00</p> — no class/id
             price = None
             currency = None
-            for p in card.find_all('p'):
-                text = p.get_text(strip=True)
-                if any(c.isdigit() for c in text):
+            for elem in card.find_all(['div', 'p']):
+                text = elem.get_text(strip=True)
+                if re.match(r'^NOK\s+[\d.,]+$', text, re.IGNORECASE):
                     price, currency = self._extract_price_from_text(text, url)
                     if price:
                         break
@@ -588,14 +588,19 @@ class GenericParser(BaseParser):
                         currency = self._extract_currency(elem.get_text(), url)
                     break
         
-        # csmegastore.no uses plain <span> NOK 154,00 </span> — no class/id/itemprop
+        # csmegastore.no detail pages: price is in <div class="banner_32"><div><span>NOK X</span></div></div>
         if not price and 'csmegastore.no' in urlparse(url).netloc:
-            for elem in soup.find_all(['span', 'p', 'div']):
-                text = elem.get_text(strip=True)
-                if re.match(r'^NOK\s+[\d.,]+$', text, re.IGNORECASE):
-                    price, currency = self._extract_price_from_text(text, url)
-                    if price:
-                        break
+            banner = soup.select_one('div.banner_32 span, div.banner_32')
+            if banner:
+                price, currency = self._extract_price_from_text(banner.get_text(strip=True), url)
+            if not price:
+                # Fallback: find any element whose sole text is "NOK <amount>"
+                for elem in soup.find_all(['span', 'p', 'div']):
+                    text = elem.get_text(strip=True)
+                    if re.match(r'^NOK\s+[\d.,]+$', text, re.IGNORECASE):
+                        price, currency = self._extract_price_from_text(text, url)
+                        if price:
+                            break
 
         old_price_selectors = ['.was-price', '.old-price', '.original-price', 'del .price', '.list-price', 's .price']
         for selector in old_price_selectors:
