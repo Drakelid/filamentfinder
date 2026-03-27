@@ -912,13 +912,39 @@ class GenericParser(BaseParser):
         
         return list(links)
     
+    def _infer_page_count(self, soup, products_per_page: int = 30) -> Optional[int]:
+        """Try to infer the total page count from product count text on the page.
+
+        Looks for patterns like "Viser 1-20 av 7000 produkter", "1-30 of 7000",
+        "Showing 1 to 30 of 7000", etc. Returns None if not found.
+        """
+        # Matches: "av 7 000", "of 7000", "av 7000", etc. — capture the total
+        total_pattern = re.compile(
+            r'(?:av|of|von|di|su|de)\s+([\d\s\xa0.,]+)\s*(?:produkter?|products?|results?|items?|varer?|artik)',
+            re.IGNORECASE,
+        )
+        for text in (elem.get_text(' ', strip=True) for elem in soup.find_all(['span', 'p', 'div', 'strong'])):
+            m = total_pattern.search(text)
+            if m:
+                raw = re.sub(r'[\s\xa0]', '', m.group(1)).replace(',', '').replace('.', '')
+                try:
+                    total = int(raw)
+                    if total > 0:
+                        return max(1, (total + products_per_page - 1) // products_per_page)
+                except ValueError:
+                    pass
+        return None
+
     def extract_pagination_links(self, html: str, url: str) -> List[str]:
         """Extract pagination links using generic heuristics."""
         soup = self._get_soup(html)
         links = set()
         parsed_url = urlparse(url)
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}"
-        
+
+        # Generous ceiling — the crawler's own max_pages setting will cap actual work
+        MAX_GENERATED_PAGES = 300
+
         # Standard pagination selectors
         pagination_selectors = [
             '.pagination a',
@@ -926,9 +952,11 @@ class GenericParser(BaseParser):
             'nav[aria-label*="pagination"] a',
             '.page-numbers a',
             '[class*="pagination"] a',
+            '[class*="paging"] a',
+            '[class*="paginator"] a',
             'a[rel="next"]',
         ]
-        
+
         for selector in pagination_selectors:
             for a in soup.select(selector):
                 href = a.get('href')
@@ -936,7 +964,7 @@ class GenericParser(BaseParser):
                     if not href.startswith('http'):
                         href = urljoin(url, href)
                     links.add(href)
-        
+
         # Handle 3DJake client-pagination custom element
         client_pagination = soup.select_one('client-pagination')
         if client_pagination:
@@ -944,26 +972,26 @@ class GenericParser(BaseParser):
             param_name = client_pagination.get('parameter-name', 'page')
             if last_page:
                 try:
-                    total_pages = int(last_page)
+                    total_pages = min(int(last_page), MAX_GENERATED_PAGES)
                     for page in range(2, total_pages + 1):
                         page_url = f"{base_url}?{param_name}={page}"
                         links.add(page_url)
                 except ValueError:
                     pass
-        
+
         # Handle Computersalg data-number-of-pages attribute
         pagination_div = soup.select_one('[data-number-of-pages]')
         if pagination_div:
             total_pages_str = pagination_div.get('data-number-of-pages')
             if total_pages_str:
                 try:
-                    total_pages = min(int(total_pages_str), 50)  # Limit to 50 pages
+                    total_pages = min(int(total_pages_str), MAX_GENERATED_PAGES)
                     for page in range(2, total_pages + 1):
                         page_url = f"{base_url}?page={page}"
                         links.add(page_url)
                 except ValueError:
                     pass
-        
+
         # Handle Clas Ohlson data-page attributes
         page_links_with_data = soup.select('[data-page]')
         if page_links_with_data:
@@ -973,17 +1001,17 @@ class GenericParser(BaseParser):
                 if page_val.isdigit():
                     max_page = max(max_page, int(page_val))
             if max_page > 1:
-                for page in range(2, min(max_page + 1, 51)):
+                for page in range(2, min(max_page + 1, MAX_GENERATED_PAGES + 1)):
                     page_url = f"{base_url}?page={page}"
                     links.add(page_url)
-        
-        # Standard next/page number links
+
+        # Standard next/page number links — includes Norwegian/Dutch "next" words
         for a in soup.find_all('a', href=True):
             href = a.get('href')
             text = a.get_text(strip=True).lower()
-            
+
             if href and not href.startswith('javascript:'):
-                if text in ['next', 'next page', '>', '>>', '→', 'volgende', 'neste']:
+                if text in ['next', 'next page', '>', '>>', '»', '›', '→', 'volgende', 'neste', 'nästa', 'seuraava', 'næste']:
                     if not href.startswith('http'):
                         href = urljoin(url, href)
                     links.add(href)
@@ -991,22 +1019,43 @@ class GenericParser(BaseParser):
                     if not href.startswith('http'):
                         href = urljoin(url, href)
                     links.add(href)
-        
-        # Generate page URLs from URL patterns (for sites with ?pn=X, ?page=X, ?pageID=X)
-        if '?' in url:
-            # Already has query params, check for page param patterns
-            pass
-        else:
-            # Check if this looks like a category page that might have pagination
-            page_param_patterns = ['pn', 'page', 'pageID', 'p']
-            for param in page_param_patterns:
-                # Look for existing pagination links to determine the pattern
-                for link in list(links):
-                    if f'?{param}=' in link or f'&{param}=' in link:
-                        # Found the pattern, generate more pages
-                        for page in range(2, 11):  # Generate pages 2-10
-                            page_url = f"{base_url}?{param}={page}"
-                            links.add(page_url)
-                        break
-        
+
+        # --- Pattern-based page URL generation ---
+        # Detect products-per-page from current page to estimate total pages
+        products_on_page = len(soup.select('a[href*="/i/"]')) or 30  # csmegastore cards; fallback 30
+
+        # Try to determine total pages from product count text
+        inferred_pages = self._infer_page_count(soup, products_per_page=max(products_on_page, 1))
+
+        # Query-string pagination: ?pn=N, ?page=N, ?pageID=N, ?p=N
+        page_param_patterns = ['pn', 'page', 'pageID', 'p', 'pg', 'offset']
+        for param in page_param_patterns:
+            for link in list(links):
+                if f'?{param}=' in link or f'&{param}=' in link:
+                    total = inferred_pages or MAX_GENERATED_PAGES
+                    for page in range(2, min(total + 1, MAX_GENERATED_PAGES + 1)):
+                        page_url = f"{base_url}?{param}={page}"
+                        links.add(page_url)
+                    break
+
+        # Path-segment pagination: /l/1288/slug/2, /category/slug/page/2, etc.
+        # Only attempt if no query-string pagination was found and there are products on this page
+        if not any(f'?{p}=' in link for p in page_param_patterns for link in links) and products_on_page > 0:
+            # Check for an existing path-numeric link like .../2 from pagination selectors
+            path_page_found = False
+            for link in list(links):
+                link_path = urlparse(link).path.rstrip('/')
+                if re.search(r'/(\d+)$', link_path):
+                    total = inferred_pages or MAX_GENERATED_PAGES
+                    for page in range(2, min(total + 1, MAX_GENERATED_PAGES + 1)):
+                        # Replace or append the page number in the path
+                        new_path = re.sub(r'/\d+$', f'/{page}', link_path)
+                        links.add(f"{parsed_url.scheme}://{parsed_url.netloc}{new_path}")
+                    path_page_found = True
+                    break
+            # If no path-numeric link yet, try appending page numbers directly to the base path
+            if not path_page_found and inferred_pages and inferred_pages > 1:
+                for page in range(2, min(inferred_pages + 1, MAX_GENERATED_PAGES + 1)):
+                    links.add(f"{base_url.rstrip('/')}/{page}")
+
         return list(links)

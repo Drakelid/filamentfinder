@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     crawler_user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
     crawler_rate_limit: float = 1.0
-    crawler_max_pages: int = 100
+    crawler_max_pages: int = 300
     crawler_max_depth: int = 3
     crawler_timeout: int = 30
     crawler_respect_robots_txt: bool = True

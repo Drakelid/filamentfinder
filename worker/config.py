@@ -44,7 +44,7 @@ class WorkerSettings(BaseSettings):
     crawler_rate_limit: float = 0.5  # Max 0.5 requests per second (2 seconds between requests)
     crawler_min_delay: float = 2.0  # Minimum delay between requests in seconds
     crawler_max_delay: float = 5.0  # Maximum delay for random jitter
-    crawler_max_pages: int = 100
+    crawler_max_pages: int = 300
     crawler_max_depth: int = 3
     crawler_timeout: int = 30
     crawler_respect_robots_txt: bool = True
