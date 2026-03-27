@@ -52,7 +52,7 @@ async def send_webhook_notification(subject: str, body: str) -> bool:
             "event": "price_change",
             "subject": subject,
             "body": body,
-            "timestamp": __import__('datetime').datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         
         headers = {"Content-Type": "application/json"}

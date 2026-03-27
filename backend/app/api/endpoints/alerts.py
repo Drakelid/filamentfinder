@@ -31,6 +31,8 @@ def create_alert(alert_in: PriceAlertCreate, db: Session = Depends(get_db)):
 def list_alerts(
     product_id: int | None = Query(None),
     active: bool | None = Query(None),
+    skip: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum alerts to return"),
     db: Session = Depends(get_db),
 ):
     query = db.query(PriceAlert)
@@ -40,7 +42,7 @@ def list_alerts(
         query = query.filter(PriceAlert.active == active)
 
     total = query.count()
-    items = query.order_by(PriceAlert.created_at.desc()).all()
+    items = query.order_by(PriceAlert.created_at.desc()).offset(skip).limit(limit).all()
     return PriceAlertList(items=items, total=total)
 
 

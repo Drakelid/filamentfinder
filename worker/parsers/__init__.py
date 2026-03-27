@@ -7,13 +7,15 @@ from worker.parsers.woocommerce import WooCommerceParser
 from worker.parsers.magento import MagentoParser
 from worker.parsers.generic import GenericParser
 
-# All available parsers in priority order (highest priority first)
-_PARSERS = [
-    JsonLdParser(),      # priority 100 - structured data is most reliable
-    ShopifyParser(),     # priority 90
-    WooCommerceParser(), # priority 80
-    MagentoParser(),     # priority 70
-    GenericParser(),     # priority 0 - fallback
+# Parser classes in priority order (highest priority first).
+# Fresh instances are created per call to avoid shared mutable state
+# (e.g. selector_overrides) across concurrent crawls.
+_PARSER_CLASSES = [
+    (JsonLdParser, 100),       # structured data is most reliable
+    (ShopifyParser, 90),
+    (WooCommerceParser, 80),
+    (MagentoParser, 70),
+    (GenericParser, 0),        # fallback
 ]
 
 
@@ -23,6 +25,9 @@ def get_parser(html: str, url: str, headers: Dict[str, str] = None) -> BaseParse
     
     Tries each parser in priority order and returns the first one that can parse the page.
     Falls back to GenericParser if no specific parser matches.
+    
+    A fresh parser instance is returned each time to ensure concurrent crawls
+    do not share mutable state (e.g. selector_overrides).
     
     Args:
         html: The HTML content of the page
@@ -35,16 +40,14 @@ def get_parser(html: str, url: str, headers: Dict[str, str] = None) -> BaseParse
     if headers is None:
         headers = {}
     
-    # Sort by priority (highest first) and try each parser
-    for parser in sorted(_PARSERS, key=lambda p: p.priority, reverse=True):
+    for parser_cls, _priority in sorted(_PARSER_CLASSES, key=lambda x: x[1], reverse=True):
         try:
+            parser = parser_cls()
             if parser.can_parse(html, url, headers):
                 return parser
         except Exception:
-            # If can_parse fails, skip this parser
             continue
     
-    # Fallback to generic parser
     return GenericParser()
 
 

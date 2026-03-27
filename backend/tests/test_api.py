@@ -45,8 +45,38 @@ def client():
 class TestHealthEndpoint:
     def test_health_check(self, client):
         response = client.get("/health")
-        assert response.status_code == 200
-        assert response.json() == {"status": "healthy"}
+        data = response.json()
+        assert "status" in data
+        assert "checks" in data
+        assert "database" in data["checks"]
+        assert "redis" in data["checks"]
+
+    def test_health_check_returns_structured_error(self, client):
+        response = client.get("/health")
+        data = response.json()
+        assert data["status"] in ("healthy", "unhealthy")
+
+
+class TestStructuredErrorResponse:
+    def test_404_returns_structured_error(self, client):
+        response = client.get("/api/products/999999")
+        assert response.status_code == 404
+        data = response.json()
+        assert "detail" in data
+        assert "status_code" in data
+        assert data["status_code"] == 404
+        assert "errors" in data
+
+    def test_422_returns_structured_validation_error(self, client):
+        response = client.post("/api/sources", json={})
+        assert response.status_code == 422
+        data = response.json()
+        assert data["detail"] == "Validation error"
+        assert data["status_code"] == 422
+        assert isinstance(data["errors"], list)
+        assert len(data["errors"]) > 0
+        assert "field" in data["errors"][0]
+        assert "message" in data["errors"][0]
 
 
 class TestSourcesAPI:

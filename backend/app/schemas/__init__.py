@@ -26,6 +26,10 @@ from app.schemas.crawl_run import (
     CrawlRunResponse,
     CrawlRunListResponse,
 )
+from app.schemas.error import (
+    ErrorResponse,
+    ErrorDetail,
+)
 
 __all__ = [
     "SourceCreate",
@@ -46,4 +50,6 @@ __all__ = [
     "PriceAlertList",
     "CrawlRunResponse",
     "CrawlRunListResponse",
+    "ErrorResponse",
+    "ErrorDetail",
 ]

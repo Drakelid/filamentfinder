@@ -30,6 +30,8 @@ class PriceObservation(Base):
     in_stock: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     stock_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     raw_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    crawl_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    crawl_run_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("crawl_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     product: Mapped["Product"] = relationship("Product", back_populates="price_observations")

@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -75,7 +76,7 @@ def _group_hourly_activity(db: Session, model, timestamp_column, hours: int, sta
 @router.get("")
 def get_stats(db: Session = Depends(get_db)):
     """Get overall crawler statistics."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     last_24h = now - timedelta(hours=24)
     last_7d = now - timedelta(days=7)
     last_30d = now - timedelta(days=30)
@@ -187,6 +188,8 @@ def get_stats(db: Session = Depends(get_db)):
             "latest_run": _summarize_run(latest_run) if latest_run else None,
         })
     
+    queue_stats = _get_queue_stats()
+
     return {
         "overview": {
             "total_sources": total_sources,
@@ -210,6 +213,7 @@ def get_stats(db: Session = Depends(get_db)):
         },
         "recent_runs": recent_runs_data,
         "sources": sources_summary,
+        "queues": queue_stats,
     }
 
 
@@ -219,7 +223,7 @@ def get_activity_timeline(
     db: Session = Depends(get_db)
 ):
     """Get hourly activity breakdown."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     start_time = now - timedelta(hours=hours)
     observation_rows = _group_hourly_activity(db, PriceObservation, PriceObservation.observed_at, hours, start_time)
     change_rows = _group_hourly_activity(db, PriceChange, PriceChange.changed_at, hours, start_time)
@@ -320,6 +324,58 @@ def _get_redis_memory_bytes() -> Optional[int]:
         return int(value) if value is not None else None
     except Exception:
         return None
+
+
+def _get_queue_stats() -> dict:
+    queue_keys = {
+        "pending": "scan_queue",
+        "processing": "scan_queue:processing",
+        "dead_letter": "scan_queue:dead",
+    }
+    summary = {
+        "pending": {"key": queue_keys["pending"], "length": None},
+        "processing": {"key": queue_keys["processing"], "length": None},
+        "dead_letter": {"key": queue_keys["dead_letter"], "length": None, "latest": None},
+    }
+
+    settings = get_settings()
+    try:
+        client = redis.from_url(settings.redis_url, decode_responses=True)
+    except Exception:
+        return summary
+
+    try:
+        for label, redis_key in queue_keys.items():
+            try:
+                summary[label]["length"] = client.llen(redis_key)
+            except Exception:
+                summary[label]["length"] = None
+
+        try:
+            raw_entry = client.lindex(queue_keys["dead_letter"], -1)
+        except Exception:
+            raw_entry = None
+
+        if raw_entry:
+            latest = None
+            try:
+                payload = json.loads(raw_entry)
+                latest = {
+                    "job_id": payload.get("job_id"),
+                    "source_id": payload.get("source_id"),
+                    "failure_reason": payload.get("failure_reason"),
+                    "failed_at": payload.get("failed_at"),
+                }
+            except json.JSONDecodeError:
+                latest = None
+            summary["dead_letter"]["latest"] = latest
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    return summary
 
 
 def _get_storage_summary(db: Session) -> dict:

@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 from typing import Generator
@@ -30,3 +32,22 @@ def get_db() -> Generator[Session, None, None]:
 
 def get_db_session() -> Session:
     return SessionLocal()
+
+
+@contextmanager
+def db_session() -> Generator[Session, None, None]:
+    """Context manager for worker DB sessions.
+
+    Usage::
+
+        with db_session() as db:
+            products = db.query(Product).all()
+            db.commit()
+
+    The session is automatically closed when the block exits.
+    """
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()

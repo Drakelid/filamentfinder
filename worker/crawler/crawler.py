@@ -642,23 +642,40 @@ class Crawler:
         return discovered_urls
     
     async def _mark_missing_products(self):
-        """Mark products not seen in this crawl as potentially inactive."""
+        """Mark products not seen in recent crawls as inactive.
+
+        Products that were not seen in the last 3 days are marked inactive.
+        This prevents stale products from polluting price comparisons.
+        """
+        STALE_DAYS = 3
         db = get_db_session()
         try:
-            if self.crawl_run:
-                products = db.query(Product).filter(
-                    Product.source_id == self.source_id,
-                    Product.active == True,
-                ).all()
-                
-                now = datetime.now(timezone.utc)
-                threshold = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                
-                for product in products:
-                    if product.last_seen_at and product.last_seen_at < threshold:
-                        pass
-                
-                db.commit()
+            if not self.crawl_run:
+                return
+
+            now = datetime.now(timezone.utc)
+            stale_cutoff = now - timedelta(days=STALE_DAYS)
+
+            stale_products = db.query(Product).filter(
+                Product.source_id == self.source_id,
+                Product.active == True,
+                Product.last_seen_at < stale_cutoff,
+            ).all()
+
+            deactivated = 0
+            for product in stale_products:
+                product.active = False
+                deactivated += 1
+
+            if deactivated:
+                logger.info(
+                    "Deactivated stale products",
+                    source_id=self.source_id,
+                    count=deactivated,
+                    stale_days=STALE_DAYS,
+                )
+
+            db.commit()
         finally:
             db.close()
     

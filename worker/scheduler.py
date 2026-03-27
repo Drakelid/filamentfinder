@@ -12,7 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from worker.config import get_settings, refresh_settings
-from worker.database import get_db_session
+from worker.database import get_db_session, db_session
 from worker.models import Source, Product, PriceObservation
 from worker.crawler.crawler import run_crawler
 from worker.notifications import send_notification, trigger_price_alerts
@@ -211,9 +211,8 @@ class ScanWorker:
         self.refresh_runtime_settings()
         logger.info("Running scheduled scans")
         
-        db = get_db_session()
         enqueued = 0
-        try:
+        with db_session() as db:
             sources = db.query(Source).filter(Source.active == True).all()
             now = datetime.now(timezone.utc)
             for source in sources:
@@ -223,18 +222,15 @@ class ScanWorker:
                     continue
                 self.enqueue_scan_job(source.id, trigger="scheduled")
                 enqueued += 1
-        finally:
-            db.close()
 
         logger.info("Scheduled scans enqueued", count=enqueued)
 
     async def check_stale_sources(self):
         """Send alerts for sources that haven't scanned within their stale window."""
         logger.info("Checking for stale sources")
-        db = get_db_session()
         stale_alerts = []
         stale_source_ids: List[int] = []
-        try:
+        with db_session() as db:
             sources = db.query(Source).filter(Source.active == True).all()
             now = datetime.now(timezone.utc)
             for source in sources:
@@ -269,8 +265,6 @@ class ScanWorker:
                     if has_stale_message:
                         source.status_message = None
             db.commit()
-        finally:
-            db.close()
 
         for alert in stale_alerts:
             await send_notification(
@@ -301,7 +295,7 @@ class ScanWorker:
         
         # Calculate cutoff time (48 hours ago with some random jitter)
         jitter_hours = random.uniform(-6, 6)  # Random jitter of +/- 6 hours
-        cutoff = datetime.utcnow() - timedelta(hours=settings.price_check_interval_hours + jitter_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.price_check_interval_hours + jitter_hours)
         
         db = get_db_session()
         try:
@@ -407,28 +401,63 @@ class ScanWorker:
                         if last_observation and last_observation.price_amount:
                             old_price = float(last_observation.price_amount)
                             new_price = float(parsed_product.price)
-                            if old_price != new_price:
+                            min_change_percent = max(getattr(settings, "price_change_min_percent", 0.0), 0.0)
+
+                            if old_price > 0 and old_price != new_price:
                                 change_percent = ((new_price - old_price) / old_price) * 100
-                                product.latest_change_percent = change_percent
-                                product.latest_change_type = "decrease" if change_percent < 0 else "increase"
-                                product.latest_change_at = datetime.utcnow()
-                                
-                                logger.info("Price change detected",
-                                    product=product.name,
+                                abs_change = abs(change_percent)
+
+                                if abs_change < min_change_percent:
+                                    logger.debug(
+                                        "Ignoring minor price change",
+                                        product_id=product.id,
+                                        change_percent=round(change_percent, 4),
+                                        threshold=min_change_percent,
+                                        last_change_at=product.latest_change_at,
+                                    )
+                                else:
+                                    is_duplicate_change = (
+                                        product.latest_change_percent is not None
+                                        and product.latest_change_at is not None
+                                        and abs(product.latest_change_percent - change_percent) < 0.01
+                                    )
+
+                                    if is_duplicate_change:
+                                        logger.debug(
+                                            "Skipping duplicate price change entry",
+                                            product_id=product.id,
+                                            change_percent=round(change_percent, 4),
+                                            last_change_at=product.latest_change_at,
+                                        )
+                                    else:
+                                        product.latest_change_percent = change_percent
+                                        product.latest_change_type = (
+                                            "decrease" if change_percent < 0 else "increase"
+                                        )
+                                        product.latest_change_at = datetime.now(timezone.utc)
+
+                                        logger.info(
+                                            "Price change detected",
+                                            product=product.name,
+                                            old_price=old_price,
+                                            new_price=new_price,
+                                            change_percent=round(change_percent, 2),
+                                        )
+                            elif old_price <= 0:
+                                logger.debug(
+                                    "Skipping price change calculation due to non-positive prior price",
+                                    product_id=product.id,
                                     old_price=old_price,
-                                    new_price=new_price,
-                                    change_percent=round(change_percent, 2)
                                 )
                         
                         # Update last_seen_at
-                        product.last_seen_at = datetime.utcnow()
+                        product.last_seen_at = datetime.now(timezone.utc)
                         await trigger_price_alerts(db, product, new_observation)
                         db.commit()
-                        
                         logger.info("Price check complete", product_id=product.id, price=float(parsed_product.price))
                     else:
                         # Still update last_seen_at even if no price found
-                        product.last_seen_at = datetime.utcnow()
+                        product.last_seen_at = datetime.now(timezone.utc)
                         db.commit()
                         logger.warning("No price found", product_id=product.id, url=url)
                         

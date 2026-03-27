@@ -1,10 +1,11 @@
 import os
 from typing import Optional
-from urllib.parse import urlsplit, urlunsplit
 from sqlalchemy import create_engine, text
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from cryptography.fernet import Fernet, InvalidToken
+
+from shared.network import normalize_container_service_urls as _normalize_container_service_urls
 
 
 DB_CONFIG_CASTERS = {
@@ -23,6 +24,7 @@ DB_CONFIG_CASTERS = {
     "price_check_enabled": bool,
     "price_check_interval_hours": int,
     "price_check_batch_size": int,
+    "price_change_min_percent": float,
     "smtp_host": str,
     "smtp_port": int,
     "smtp_user": str,
@@ -32,35 +34,6 @@ DB_CONFIG_CASTERS = {
     "webhook_url": str,
     "webhook_secret": str,
 }
-
-
-def _rewrite_service_hostname(url: str, service_name: str, ip_address: str) -> str:
-    if not url:
-        return url
-
-    parts = urlsplit(url)
-    if parts.hostname != service_name:
-        return url
-
-    netloc = ip_address
-    if parts.username:
-        credentials = parts.username
-        if parts.password:
-            credentials = f"{credentials}:{parts.password}"
-        netloc = f"{credentials}@{netloc}"
-    if parts.port:
-        netloc = f"{netloc}:{parts.port}"
-
-    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
-
-
-def _normalize_container_service_urls(url: str) -> str:
-    if os.environ.get("GLUETUN_ENABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
-        return url
-
-    normalized = _rewrite_service_hostname(url, "db", "172.30.0.3")
-    normalized = _rewrite_service_hostname(normalized, "redis", "172.30.0.4")
-    return normalized
 
 
 class WorkerSettings(BaseSettings):
@@ -84,6 +57,7 @@ class WorkerSettings(BaseSettings):
     price_check_enabled: bool = True
     price_check_interval_hours: int = 48  # Check prices every 48 hours
     price_check_batch_size: int = 50  # Number of products to check per batch
+    price_change_min_percent: float = 1.0  # Ignore changes below this percent threshold
     
     smtp_host: Optional[str] = None
     smtp_port: int = 587

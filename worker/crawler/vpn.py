@@ -18,7 +18,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional, List, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -248,7 +248,7 @@ class MullvadVPN:
             self._status.connected = True
             self._status.server = "Gluetun / Mullvad WireGuard"
             self._status.location = "Docker shared network"
-            self._last_rotation = datetime.utcnow()
+            self._last_rotation = datetime.now(timezone.utc)
             logger.info("VPN connected via Gluetun network namespace")
             return True
 
@@ -257,7 +257,7 @@ class MullvadVPN:
             self._status.connected = True
             self._status.server = active_file_name or urlparse(self._external_proxy).hostname or "SOCKS5 proxy"
             self._status.location = "Uploaded WireGuard profile" if profiles else "Proxy"
-            self._last_rotation = datetime.utcnow()
+            self._last_rotation = datetime.now(timezone.utc)
             logger.info("VPN connected via configured proxy", server=self._status.server)
             return True
 
@@ -287,7 +287,7 @@ class MullvadVPN:
         
         self._status.server = server
         self._status.location = location
-        self._last_rotation = datetime.utcnow()
+        self._last_rotation = datetime.now(timezone.utc)
         
         logger.info("VPN SOCKS5 proxy rotated", server=server, location=location)
         return True
@@ -310,7 +310,7 @@ class MullvadVPN:
 
         self._status.server = next_file_name
         self._status.location = "Uploaded WireGuard profile"
-        self._last_rotation = datetime.utcnow()
+        self._last_rotation = datetime.now(timezone.utc)
         logger.info("VPN WireGuard profile rotated", profile=next_file_name)
         return True
     
@@ -326,7 +326,7 @@ class MullvadVPN:
         if not self._last_rotation:
             return await self.rotate_server()
         
-        elapsed = datetime.utcnow() - self._last_rotation
+        elapsed = datetime.now(timezone.utc) - self._last_rotation
         if elapsed >= timedelta(minutes=self._rotate_interval_minutes):
             profiles, _ = _load_wireguard_profiles_from_db()
             if len(profiles) > 1:

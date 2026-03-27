@@ -2,7 +2,7 @@
 import random
 import asyncio
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 import structlog
 
@@ -64,12 +64,12 @@ class DomainState:
     blocked_count: int = 0
     current_delay: float = 2.0
     user_agent_index: int = 0
-    session_start: datetime = field(default_factory=datetime.utcnow)
+    session_start: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def reset_session(self):
         """Reset session state (simulates new browser session)."""
         self.user_agent_index = random.randint(0, len(USER_AGENTS) - 1)
-        self.session_start = datetime.utcnow()
+        self.session_start = datetime.now(timezone.utc)
         self.consecutive_errors = 0
 
 
@@ -202,7 +202,7 @@ class AntiBotManager:
         state = self._get_domain_state(domain)
         state.consecutive_errors = 0
         state.total_requests += 1
-        state.last_request_time = datetime.utcnow()
+        state.last_request_time = datetime.now(timezone.utc)
         
         # Gradually reduce delay on success (but not below minimum)
         state.current_delay = max(2.0, state.current_delay * 0.95)
@@ -213,7 +213,7 @@ class AntiBotManager:
         """Record a failed request and adjust strategy."""
         state = self._get_domain_state(domain)
         state.consecutive_errors += 1
-        state.last_error_time = datetime.utcnow()
+        state.last_error_time = datetime.now(timezone.utc)
         
         if is_blocked or status_code in (403, 429, 503):
             state.blocked_count += 1
@@ -250,7 +250,7 @@ class AntiBotManager:
         # Skip if blocked too many times recently
         if state.blocked_count >= 5:
             if state.last_error_time:
-                time_since_block = datetime.utcnow() - state.last_error_time
+                time_since_block = datetime.now(timezone.utc) - state.last_error_time
                 if time_since_block < timedelta(hours=1):
                     return True, f"Domain blocked, waiting for cooldown ({state.blocked_count} blocks)"
         

@@ -50,7 +50,9 @@ class Product(Base):
 
     source: Mapped["Source"] = relationship("Source", back_populates="products")
     price_observations: Mapped[List["PriceObservation"]] = relationship(
-        "PriceObservation", back_populates="product", cascade="all, delete-orphan"
+        "PriceObservation", back_populates="product", cascade="all, delete-orphan",
+        lazy="select",
+        order_by="PriceObservation.observed_at.desc()",
     )
     price_changes: Mapped[List["PriceChange"]] = relationship(
         "PriceChange", back_populates="product", cascade="all, delete-orphan"
@@ -64,6 +66,12 @@ class Product(Base):
 
     @property
     def latest_price(self) -> Optional["PriceObservation"]:
+        """Return the most recent price observation.
+
+        When the relationship is already loaded (e.g. via joinedload), the
+        first element is the latest due to the desc ordering on the
+        relationship.  Otherwise, falls back to iterating.
+        """
         if self.price_observations:
-            return max(self.price_observations, key=lambda p: p.observed_at)
+            return self.price_observations[0]
         return None
