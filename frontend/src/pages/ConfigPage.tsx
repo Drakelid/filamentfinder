@@ -15,7 +15,7 @@ import { LoadingState, SectionCard, TabStrip, cx } from '../components/admin/Adm
 
 const TABS = ['VPN & Proxy', 'Crawler Settings', 'Notifications', 'Data Management']
 const DEFAULT_CRAWLER_CONFIG: CrawlerConfig = {
-  user_agent: 'FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)',
+  user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
   rate_limit: 1,
   min_delay: 2,
   max_delay: 5,

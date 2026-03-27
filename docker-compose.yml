@@ -76,7 +76,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
       - REDIS_URL=redis://redis:6379/0
-      - CRAWLER_USER_AGENT=${CRAWLER_USER_AGENT:-FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)}
+      - CRAWLER_USER_AGENT=${CRAWLER_USER_AGENT:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36}
       - CRAWLER_RATE_LIMIT=${CRAWLER_RATE_LIMIT:-1.0}
       - CRAWLER_MAX_PAGES=${CRAWLER_MAX_PAGES:-100}
       - CRAWLER_MAX_DEPTH=${CRAWLER_MAX_DEPTH:-3}

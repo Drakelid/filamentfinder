@@ -105,7 +105,7 @@ Environment variables (see `.env.example`):
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://...` |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `CRAWLER_USER_AGENT` | User-Agent for requests | `FilamentFinder/1.0` |
+| `CRAWLER_USER_AGENT` | User-Agent for requests | `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36` |
 | `CRAWLER_RATE_LIMIT` | Requests per second per domain | `1.0` |
 | `CRAWLER_MAX_PAGES` | Default max pages per scan | `100` |
 | `CRAWLER_MAX_DEPTH` | Default max crawl depth | `3` |
