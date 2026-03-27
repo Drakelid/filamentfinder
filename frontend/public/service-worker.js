@@ -1,5 +1,5 @@
 const APP_PREFIX = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'filamentfinder-shell-v1';
+const CACHE_NAME = 'filamentfinder-shell-v2';
 const CORE_URLS = [
   APP_PREFIX,
   `${APP_PREFIX}manifest.webmanifest`,
@@ -37,6 +37,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Never cache API calls or the runtime env config — always pass through to network.
+  if (
+    requestUrl.pathname.includes('/api/') ||
+    requestUrl.pathname.endsWith('/env-config.js')
+  ) {
+    return;
+  }
+
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(async () => {
@@ -59,6 +67,9 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
         }
         return networkResponse;
+      }).catch(() => {
+        // Network failed and nothing in cache — let the browser handle it normally.
+        return new Response('Network error', { status: 503, statusText: 'Service Unavailable' });
       });
     }),
   );
