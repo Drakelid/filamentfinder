@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc, case, or_, func
+from sqlalchemy import desc, case, or_, func, select
 
 from app.core.database import get_db
 from app.utils.weight import extract_weight_grams
@@ -84,11 +84,19 @@ def list_products(
     source_id: Optional[int] = None,
     active: Optional[bool] = None,
     search: Optional[str] = None,
+    sort: Optional[str] = Query(None, description="Sort by updated, name, price_asc, or price_desc"),
     skip: int = Query(0, ge=0, le=100000, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=500, description="Maximum products to return"),
     db: Session = Depends(get_db),
 ):
     query = db.query(Product).options(joinedload(Product.price_observations))
+    latest_delivered_price = (
+        select(_delivered_price_expr())
+        .where(PriceObservation.product_id == Product.id)
+        .order_by(PriceObservation.observed_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
     
     if category:
         query = query.filter(Product.category == category.lower())
@@ -129,7 +137,19 @@ def list_products(
         query = query.filter(Product.id.in_(product_ids_with_price))
     
     total = query.count()
-    products = query.order_by(desc(Product.updated_at)).offset(skip).limit(limit).all()
+
+    if sort == "price_asc":
+        query = query.order_by(latest_delivered_price.asc().nullslast(), desc(Product.updated_at))
+    elif sort == "price_desc":
+        query = query.order_by(latest_delivered_price.desc().nullslast(), desc(Product.updated_at))
+    elif sort == "name":
+        query = query.order_by(Product.name.asc(), desc(Product.updated_at))
+    elif sort == "relevance":
+        query = query.order_by(desc(Product.confidence), desc(Product.updated_at))
+    else:
+        query = query.order_by(desc(Product.updated_at))
+
+    products = query.offset(skip).limit(limit).all()
     
     items = []
     for p in products:

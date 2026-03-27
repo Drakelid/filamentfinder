@@ -146,6 +146,37 @@ class TestShopifyParser:
         assert "https://store.example.com/products/pla-filament" in links
         assert "https://store.example.com/products/petg-filament" in links
 
+    def test_parse_product_applies_3dnet_vat_adjustment(self, parser):
+        html = '''
+        <html>
+        <body>
+            <script type="application/json" data-product-json>
+                {
+                    "title": "Fiberon PETG HF",
+                    "vendor": "Fiberon",
+                    "url": "/products/fiberon-petg-hf",
+                    "images": ["https://3dnet.no/image.jpg"],
+                    "variants": [
+                        {
+                            "price": 43920,
+                            "compare_at_price": 54900,
+                            "available": true,
+                            "sku": "FIB-PETG-HF"
+                        }
+                    ]
+                }
+            </script>
+        </body>
+        </html>
+        '''
+
+        product = parser.parse_product(html, "https://3dnet.no/products/fiberon-petg-hf")
+
+        assert product is not None
+        assert product.price == Decimal("549.00")
+        assert product.list_price == Decimal("686.25")
+        assert product.currency == "NOK"
+
 
 class TestWooCommerceParser:
     @pytest.fixture
@@ -260,6 +291,24 @@ class TestGenericParser:
         assert product.price == Decimal("279")
         assert product.currency == "NOK"
         assert product.in_stock == True
+
+    def test_parse_product_list_applies_3dnet_vat_adjustment(self, parser):
+        html = '''
+        <html>
+        <body>
+            <div
+                data-product='{"id":8425790767357,"title":"Fiberon PETG HF","handle":"fiberon-petg-hf","vendor":"Fiberon","available":true,"variants":[{"price":43920,"sku":"FIB-PETG-HF","available":true}],"images":["//3dnet.no/image.jpg"],"featured_image":"//3dnet.no/image.jpg"}'
+            ></div>
+        </body>
+        </html>
+        '''
+
+        products = parser.parse_product_list(html, "https://3dnet.no/collections/filament")
+
+        assert len(products) == 1
+        assert products[0].price == Decimal("549.00")
+        assert products[0].currency == "NOK"
+        assert products[0].url == "https://3dnet.no/products/fiberon-petg-hf"
     
     def test_extract_product_links(self, parser):
         html = '''

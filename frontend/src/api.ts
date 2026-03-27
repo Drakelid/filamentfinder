@@ -495,6 +495,7 @@ export const api = {
       source_id?: number; 
       active?: boolean; 
       search?: string
+      sort?: string
       skip?: number
       limit?: number
     }) => {
@@ -507,6 +508,7 @@ export const api = {
       if (params?.source_id) searchParams.set('source_id', params.source_id.toString())
       if (params?.active !== undefined) searchParams.set('active', params.active.toString())
       if (params?.search) searchParams.set('search', params.search)
+      if (params?.sort) searchParams.set('sort', params.sort)
       if (params?.skip !== undefined) searchParams.set('skip', params.skip.toString())
       if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
       const query = searchParams.toString()

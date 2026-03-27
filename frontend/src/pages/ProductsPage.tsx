@@ -41,11 +41,11 @@ function getPricePerKgValue(product: Product): number | null {
 }
 
 function compareValues(a: number | null, b: number | null, direction: 'asc' | 'desc') {
-  const left = a ?? Number.POSITIVE_INFINITY
-  const right = b ?? Number.POSITIVE_INFINITY
-  if (left === right) return 0
-  const multiplier = direction === 'asc' ? 1 : -1
-  return left > right ? multiplier : -multiplier
+  if (a === null && b === null) return 0
+  if (a === null) return 1
+  if (b === null) return -1
+  if (a === b) return 0
+  return direction === 'asc' ? a - b : b - a
 }
 
 function sortProducts(products: Product[], sortBy: SortKey) {
@@ -295,9 +295,10 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1)
 
   const deferredSearch = useDeferredValue(searchInput.trim())
+  const serverSort = sortBy === 'price-asc' ? 'price_asc' : sortBy === 'price-desc' ? 'price_desc' : undefined
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['products', { category, productType, brand, minPrice, maxPrice, search, page }],
+    queryKey: ['products', { category, productType, brand, minPrice, maxPrice, search, sortBy, page }],
     queryFn: () => api.products.list({
       category: category || undefined,
       product_type: productType || undefined,
@@ -305,6 +306,7 @@ export default function ProductsPage() {
       min_price: minPrice ? parseFloat(minPrice) : undefined,
       max_price: maxPrice ? parseFloat(maxPrice) : undefined,
       search: search || undefined,
+      sort: serverSort,
       skip: (page - 1) * PAGE_SIZE,
       limit: PAGE_SIZE,
     }),
@@ -496,6 +498,26 @@ export default function ProductsPage() {
               Clear all
             </button>
           )}
+
+          <div className="w-full sm:ml-auto sm:w-56">
+            <label className="mb-1 block text-xs uppercase tracking-[0.24em] text-slate-500">Sort</label>
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.currentTarget.value as SortKey)
+                setPage(1)
+              }}
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-3 py-3 text-sm text-slate-100 focus:border-violet-500/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+            >
+              <option value="relevance">Relevance</option>
+              <option value="price-asc">Price: Low to high</option>
+              <option value="price-desc">Price: High to low</option>
+              <option value="kg-asc">Price/kg: Low to high</option>
+              <option value="kg-desc">Price/kg: High to low</option>
+              <option value="updated">Recently updated</option>
+              <option value="name">Name A-Z</option>
+            </select>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">

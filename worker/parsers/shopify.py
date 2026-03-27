@@ -83,14 +83,14 @@ class ShopifyParser(BaseParser):
         price_str = first_variant.get('price') or data.get('price')
         if price_str:
             if isinstance(price_str, (int, float)):
-                price = Decimal(str(price_str)) / 100
+                price = self._adjust_store_price(Decimal(str(price_str)) / 100, url)
             else:
                 price = self._clean_price(str(price_str))
         
         compare_price = first_variant.get('compare_at_price') or data.get('compare_at_price')
         if compare_price:
             if isinstance(compare_price, (int, float)):
-                list_price = Decimal(str(compare_price)) / 100
+                list_price = self._adjust_store_price(Decimal(str(compare_price)) / 100, url)
             else:
                 list_price = self._clean_price(str(compare_price))
         
@@ -128,7 +128,7 @@ class ShopifyParser(BaseParser):
             name=title,
             url=product_url,
             price=price,
-            currency='USD',
+            currency=self._extract_currency('', url=url),
             list_price=list_price,
             brand=vendor,
             variant=variant,

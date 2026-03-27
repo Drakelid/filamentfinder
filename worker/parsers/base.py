@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 
 @dataclass
@@ -218,6 +219,16 @@ class BaseParser(ABC):
                 return 'EUR'
         
         return None
+
+    def _adjust_store_price(self, price: Optional[Decimal], url: str) -> Optional[Decimal]:
+        if price is None:
+            return None
+
+        domain = urlparse(url).netloc.lower()
+        if domain == "3dnet.no" or domain.endswith(".3dnet.no"):
+            return (price * Decimal("1.25")).quantize(Decimal("0.01"))
+
+        return price
 
     def _normalize_text(self, value: Any) -> str:
         """Normalize text for case-insensitive keyword checks."""

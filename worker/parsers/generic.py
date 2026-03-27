@@ -233,8 +233,8 @@ class GenericParser(BaseParser):
                     first_variant = variants[0]
                     price_cents = first_variant.get('price')
                     if price_cents:
-                        price = Decimal(str(price_cents)) / 100
-                    currency = self._extract_currency(url=url)  # Infer from store URL rather than hardcoding
+                        price = self._adjust_store_price(Decimal(str(price_cents)) / 100, product_url or url)
+                    currency = self._extract_currency('', url=url)  # Infer from store URL rather than hardcoding
                 
                 # Get image URL
                 image_url = None
