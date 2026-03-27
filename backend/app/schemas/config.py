@@ -105,3 +105,25 @@ class CrawlerConfigUpdate(BaseModel):
     price_check_enabled: bool
     price_check_interval_hours: int = Field(ge=1, le=720)
     price_check_batch_size: int = Field(ge=1, le=10000)
+
+
+class NotificationConfigResponse(BaseModel):
+    smtp_host: Optional[str] = None
+    smtp_port: int
+    smtp_user: Optional[str] = None
+    smtp_from: Optional[str] = None
+    notification_email: Optional[str] = None
+    webhook_url: Optional[str] = None
+    smtp_password_set: bool = False
+    webhook_secret_set: bool = False
+
+
+class NotificationConfigUpdate(BaseModel):
+    smtp_host: Optional[str] = Field(default=None, max_length=255)
+    smtp_port: int = Field(ge=1, le=65535)
+    smtp_user: Optional[str] = Field(default=None, max_length=255)
+    smtp_password: Optional[str] = Field(default=None, max_length=512)
+    smtp_from: Optional[str] = Field(default=None, max_length=255)
+    notification_email: Optional[str] = Field(default=None, max_length=255)
+    webhook_url: Optional[str] = Field(default=None, max_length=2048)
+    webhook_secret: Optional[str] = Field(default=None, max_length=512)

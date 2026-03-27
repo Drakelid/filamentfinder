@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { CheckCircle, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
-import { api, CrawlerConfig, uploadWireguardConfig, VPNConfig, VPNStatus, WireGuardConfigUploadResult } from '../api'
+import {
+  api,
+  CrawlerConfig,
+  NotificationConfig,
+  NotificationConfigUpdate,
+  uploadWireguardConfig,
+  VPNConfig,
+  VPNStatus,
+  WireGuardConfigUploadResult,
+} from '../api'
 import { LoadingState, SectionCard, TabStrip, cx } from '../components/admin/AdminUI'
 
 const TABS = ['VPN & Proxy', 'Crawler Settings', 'Notifications', 'Data Management']
@@ -22,13 +31,34 @@ const DEFAULT_CRAWLER_CONFIG: CrawlerConfig = {
   price_check_interval_hours: 48,
   price_check_batch_size: 50,
 }
+const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
+  smtp_host: null,
+  smtp_port: 587,
+  smtp_user: null,
+  smtp_from: null,
+  notification_email: null,
+  webhook_url: null,
+  smtp_password_set: false,
+  webhook_secret_set: false,
+}
 
 export default function ConfigPage() {
   const [vpnConfig, setVpnConfig] = useState<VPNConfig | null>(null)
   const [crawlerConfig, setCrawlerConfig] = useState<CrawlerConfig>(DEFAULT_CRAWLER_CONFIG)
+  const [notificationConfig, setNotificationConfig] = useState<NotificationConfig>(DEFAULT_NOTIFICATION_CONFIG)
   const [accountNumber, setAccountNumber] = useState('')
   const [socksProxy, setSocksProxy] = useState('')
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState(587)
+  const [smtpUser, setSmtpUser] = useState('')
+  const [smtpPassword, setSmtpPassword] = useState('')
+  const [smtpFrom, setSmtpFrom] = useState('')
+  const [notificationEmail, setNotificationEmail] = useState('')
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhookSecret, setWebhookSecret] = useState('')
   const [showAccountNumber, setShowAccountNumber] = useState(false)
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false)
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false)
   const [enabled, setEnabled] = useState(false)
   const [autoRotate, setAutoRotate] = useState(true)
   const [rotateInterval, setRotateInterval] = useState(30)
@@ -55,6 +85,13 @@ export default function ConfigPage() {
     retry: 1,
   })
 
+  const notificationConfigQuery = useQuery<NotificationConfig>({
+    queryKey: ['notification-config'],
+    queryFn: api.config.getNotifications,
+    staleTime: Infinity,
+    retry: 1,
+  })
+
   useEffect(() => {
     if (!vpnConfigQuery.data) return
     setVpnConfig(vpnConfigQuery.data)
@@ -67,6 +104,19 @@ export default function ConfigPage() {
     if (!crawlerConfigQuery.data) return
     setCrawlerConfig(crawlerConfigQuery.data)
   }, [crawlerConfigQuery.data])
+
+  useEffect(() => {
+    if (!notificationConfigQuery.data) return
+    setNotificationConfig(notificationConfigQuery.data)
+    setSmtpHost(notificationConfigQuery.data.smtp_host ?? '')
+    setSmtpPort(notificationConfigQuery.data.smtp_port)
+    setSmtpUser(notificationConfigQuery.data.smtp_user ?? '')
+    setSmtpPassword('')
+    setSmtpFrom(notificationConfigQuery.data.smtp_from ?? '')
+    setNotificationEmail(notificationConfigQuery.data.notification_email ?? '')
+    setWebhookUrl(notificationConfigQuery.data.webhook_url ?? '')
+    setWebhookSecret('')
+  }, [notificationConfigQuery.data])
 
   const saveMutation = useMutation<VPNConfig, Error, void>({
     mutationFn: () => {
@@ -146,7 +196,38 @@ export default function ConfigPage() {
     onSettled: () => setSaving(false),
   })
 
-  const configReady = !vpnConfigQuery.isLoading && !crawlerConfigQuery.isLoading
+  const saveNotificationMutation = useMutation<NotificationConfig, Error, void>({
+    mutationFn: () => {
+      const payload: NotificationConfigUpdate = {
+        smtp_host: smtpHost.trim() || null,
+        smtp_port: smtpPort,
+        smtp_user: smtpUser.trim() || null,
+        smtp_from: smtpFrom.trim() || null,
+        notification_email: notificationEmail.trim() || null,
+        webhook_url: webhookUrl.trim() || null,
+      }
+      if (smtpPassword !== '') payload.smtp_password = smtpPassword
+      if (webhookSecret !== '') payload.webhook_secret = webhookSecret
+      return api.config.updateNotifications(payload)
+    },
+    onMutate: () => {
+      setSaving(true)
+      setError(null)
+      setSaveSuccess(false)
+      setUploadSuccess(null)
+    },
+    onSuccess: (data) => {
+      setNotificationConfig(data)
+      setSmtpPassword('')
+      setWebhookSecret('')
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    },
+    onError: (err: Error) => setError(err.message),
+    onSettled: () => setSaving(false),
+  })
+
+  const configReady = !vpnConfigQuery.isLoading && !crawlerConfigQuery.isLoading && !notificationConfigQuery.isLoading
   const displayedConfig: VPNConfig = vpnConfig ?? {
     gluetun_mode: false,
     account_number_set: false,
@@ -167,7 +248,9 @@ export default function ConfigPage() {
   const vpnConfigured = displayedConfig.enabled && (displayedConfig.proxy_configured || displayedConfig.gluetun_mode)
   const vpnVerified = testResult?.connected === true
 
-  if (vpnConfigQuery.isLoading || crawlerConfigQuery.isLoading) return <LoadingState label="Loading configuration" />
+  if (vpnConfigQuery.isLoading || crawlerConfigQuery.isLoading || notificationConfigQuery.isLoading) {
+    return <LoadingState label="Loading configuration" />
+  }
 
   return (
     <div className="space-y-6">
@@ -546,9 +629,153 @@ export default function ConfigPage() {
       )}
 
       {activeTab === 'Notifications' && (
-        <SectionCard eyebrow="Notifications" title="Notifications" description="Wire up alerts from the backend when you are ready.">
-          <p className="text-sm text-slate-400">Email and webhook settings are not exposed here yet. Add them when the backend supports editable notification settings.</p>
-        </SectionCard>
+        <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+          <SectionCard eyebrow="Notifications" title="Notification delivery" description="Configure the channels used for price alerts, stale source warnings, and crawl failure notifications.">
+            <div className="space-y-6">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">SMTP host</span>
+                  <input
+                    type="text"
+                    value={smtpHost}
+                    onChange={(e) => setSmtpHost(e.target.value)}
+                    placeholder="smtp.example.com"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">SMTP port</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={smtpPort}
+                    onChange={(e) => setSmtpPort(Number(e.target.value) || 587)}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">SMTP user</span>
+                  <input
+                    type="text"
+                    value={smtpUser}
+                    onChange={(e) => setSmtpUser(e.target.value)}
+                    placeholder="smtp-user"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">SMTP password</span>
+                  <div className="relative">
+                    <input
+                      type={showSmtpPassword ? 'text' : 'password'}
+                      value={smtpPassword}
+                      onChange={(e) => setSmtpPassword(e.target.value)}
+                      placeholder={notificationConfig.smtp_password_set ? 'Stored password will be kept unless replaced' : 'Enter SMTP password'}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 pr-11 text-slate-100 placeholder-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSmtpPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                    >
+                      {showSmtpPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  {notificationConfig.smtp_password_set && <p className="text-xs text-slate-500">A password is already stored.</p>}
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">From address</span>
+                  <input
+                    type="email"
+                    value={smtpFrom}
+                    onChange={(e) => setSmtpFrom(e.target.value)}
+                    placeholder="alerts@example.com"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-slate-300">Notification email</span>
+                  <input
+                    type="email"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2 lg:col-span-2">
+                  <span className="text-sm font-medium text-slate-300">Webhook URL</span>
+                  <input
+                    type="url"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    placeholder="https://example.com/filamentfinder-webhook"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100"
+                  />
+                </label>
+                <label className="space-y-2 lg:col-span-2">
+                  <span className="text-sm font-medium text-slate-300">Webhook secret</span>
+                  <div className="relative">
+                    <input
+                      type={showWebhookSecret ? 'text' : 'password'}
+                      value={webhookSecret}
+                      onChange={(e) => setWebhookSecret(e.target.value)}
+                      placeholder={notificationConfig.webhook_secret_set ? 'Stored secret will be kept unless replaced' : 'Optional webhook signing secret'}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 pr-11 text-slate-100 placeholder-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWebhookSecret((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                    >
+                      {showWebhookSecret ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                  {notificationConfig.webhook_secret_set && <p className="text-xs text-slate-500">A webhook signing secret is already stored.</p>}
+                </label>
+              </div>
+
+              <div className="flex flex-wrap gap-3 border-t border-slate-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => saveNotificationMutation.mutate()}
+                  disabled={saving || !configReady}
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                >
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save notification settings
+                </button>
+              </div>
+            </div>
+          </SectionCard>
+
+          <div className="space-y-4">
+            <SectionCard eyebrow="Coverage" title="Active channels" description="What the backend can currently deliver.">
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-slate-500">Email alerts:</span>{' '}
+                  <span className={notificationEmail && smtpHost ? 'text-emerald-300' : 'text-amber-200'}>
+                    {notificationEmail && smtpHost ? 'Configured' : 'Not configured'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Webhook alerts:</span>{' '}
+                  <span className={webhookUrl ? 'text-emerald-300' : 'text-amber-200'}>
+                    {webhookUrl ? 'Configured' : 'Not configured'}
+                  </span>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard eyebrow="Events" title="What triggers notifications" description="These settings apply to the backend events already implemented.">
+              <div className="space-y-3 text-sm text-slate-400">
+                <p>Price alerts fire when a product observation hits or falls below its target price.</p>
+                <p>Source alerts fire for stale sources and repeated crawl failures when those source-level alert settings are enabled.</p>
+                <p>Webhook notifications include an HMAC SHA-256 signature when a webhook secret is configured.</p>
+              </div>
+            </SectionCard>
+          </div>
+        </div>
       )}
 
       {activeTab === 'Data Management' && (

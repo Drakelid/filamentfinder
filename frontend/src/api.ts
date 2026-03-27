@@ -124,6 +124,28 @@ export interface CrawlerConfig {
   price_check_batch_size: number
 }
 
+export interface NotificationConfig {
+  smtp_host: string | null
+  smtp_port: number
+  smtp_user: string | null
+  smtp_from: string | null
+  notification_email: string | null
+  webhook_url: string | null
+  smtp_password_set: boolean
+  webhook_secret_set: boolean
+}
+
+export interface NotificationConfigUpdate {
+  smtp_host?: string | null
+  smtp_port: number
+  smtp_user?: string | null
+  smtp_password?: string | null
+  smtp_from?: string | null
+  notification_email?: string | null
+  webhook_url?: string | null
+  webhook_secret?: string | null
+}
+
 export interface VPNStatus {
   connected: boolean
   ip: string | null
@@ -407,6 +429,7 @@ export const api = {
   config: {
     getVpn: () => fetchApi<VPNConfig>('/config/vpn'),
     getCrawler: () => fetchApi<CrawlerConfig>('/config/crawler'),
+    getNotifications: () => fetchApi<NotificationConfig>('/config/notifications'),
     updateVpn: (data: {
       account_number?: string
       socks_proxy?: string
@@ -416,6 +439,8 @@ export const api = {
     }) => fetchApi<VPNConfig>('/config/vpn', { method: 'PUT', body: JSON.stringify(data) }),
     updateCrawler: (data: CrawlerConfig) =>
       fetchApi<CrawlerConfig>('/config/crawler', { method: 'PUT', body: JSON.stringify(data) }),
+    updateNotifications: (data: NotificationConfigUpdate) =>
+      fetchApi<NotificationConfig>('/config/notifications', { method: 'PUT', body: JSON.stringify(data) }),
     testVpn: () => fetchApi<VPNStatus>('/config/vpn/test', { method: 'POST' }),
   },
 

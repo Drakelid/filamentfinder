@@ -4,9 +4,10 @@ from urllib.parse import urlsplit, urlunsplit
 from sqlalchemy import create_engine, text
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
+from cryptography.fernet import Fernet, InvalidToken
 
 
-CRAWLER_CONFIG_CASTERS = {
+DB_CONFIG_CASTERS = {
     "crawler_user_agent": str,
     "crawler_rate_limit": float,
     "crawler_min_delay": float,
@@ -22,6 +23,14 @@ CRAWLER_CONFIG_CASTERS = {
     "price_check_enabled": bool,
     "price_check_interval_hours": int,
     "price_check_batch_size": int,
+    "smtp_host": str,
+    "smtp_port": int,
+    "smtp_user": str,
+    "smtp_password": str,
+    "smtp_from": str,
+    "notification_email": str,
+    "webhook_url": str,
+    "webhook_secret": str,
 }
 
 
@@ -119,26 +128,53 @@ def _coerce_config_value(value: object, caster: type):
     return str(value)
 
 
-def _load_crawler_overrides(settings: WorkerSettings) -> dict[str, object]:
-    keys = tuple(CRAWLER_CONFIG_CASTERS.keys())
+def _get_fernet() -> Fernet | None:
+    encryption_key = (os.environ.get("CONFIG_ENCRYPTION_KEY") or "").strip()
+    if not encryption_key:
+        return None
+    try:
+        return Fernet(encryption_key.encode())
+    except Exception:
+        return None
+
+
+def _decrypt_if_needed(value: object, encrypted: bool) -> str:
+    if value is None:
+        return ""
+    if not encrypted:
+        return str(value)
+    fernet = _get_fernet()
+    if fernet is None:
+        return ""
+    try:
+        return fernet.decrypt(str(value).encode()).decode()
+    except (InvalidToken, ValueError, TypeError):
+        return ""
+
+
+def _load_db_overrides(settings: WorkerSettings) -> dict[str, object]:
+    keys = tuple(DB_CONFIG_CASTERS.keys())
     placeholders = ", ".join(f":key_{index}" for index, _ in enumerate(keys))
     params = {f"key_{index}": key for index, key in enumerate(keys)}
     engine = create_engine(settings.database_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
             rows = connection.execute(
-                text(f"SELECT key, value FROM config WHERE key IN ({placeholders})"),
+                text(f"SELECT key, value, encrypted FROM config WHERE key IN ({placeholders})"),
                 params,
             )
             overrides: dict[str, object] = {}
-            for key, raw_value in rows:
+            for key, raw_value, encrypted in rows:
                 if raw_value is None:
                     continue
-                caster = CRAWLER_CONFIG_CASTERS.get(key)
+                caster = DB_CONFIG_CASTERS.get(key)
                 if caster is None:
                     continue
                 try:
-                    overrides[key] = _coerce_config_value(raw_value, caster)
+                    decoded_value = _decrypt_if_needed(raw_value, bool(encrypted))
+                    if decoded_value == "" and caster is not str:
+                        continue
+                    overrides[key] = _coerce_config_value(decoded_value, caster)
                 except (TypeError, ValueError):
                     continue
             return overrides
@@ -162,8 +198,8 @@ def _ensure_settings() -> WorkerSettings:
 def refresh_settings() -> WorkerSettings:
     global _settings
     settings = _settings if _settings is not None else WorkerSettings()
-    overrides = _load_crawler_overrides(settings)
-    for key in CRAWLER_CONFIG_CASTERS:
+    overrides = _load_db_overrides(settings)
+    for key in DB_CONFIG_CASTERS:
         if key in overrides:
             setattr(settings, key, overrides[key])
     _settings = settings

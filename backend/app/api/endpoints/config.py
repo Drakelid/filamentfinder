@@ -25,6 +25,8 @@ from app.schemas.config import (
     ConfigUpdate,
     CrawlerConfigResponse,
     CrawlerConfigUpdate,
+    NotificationConfigResponse,
+    NotificationConfigUpdate,
     VPNConfigUpdate,
     VPNConfigResponse,
     VPNStatusResponse,
@@ -54,6 +56,16 @@ CRAWLER_CONFIG_DESCRIPTIONS = {
     "price_check_enabled": "Whether periodic product price checks are enabled",
     "price_check_interval_hours": "Hours between product price checks",
     "price_check_batch_size": "Batch size for periodic product price checks",
+}
+NOTIFICATION_CONFIG_DESCRIPTIONS = {
+    "smtp_host": "SMTP host for outbound email notifications",
+    "smtp_port": "SMTP port for outbound email notifications",
+    "smtp_user": "SMTP username for outbound email notifications",
+    "smtp_password": "SMTP password for outbound email notifications",
+    "smtp_from": "From address for outbound email notifications",
+    "notification_email": "Destination email address for FilamentFinder notifications",
+    "webhook_url": "Webhook destination URL for notifications",
+    "webhook_secret": "Shared secret used to sign notification webhooks",
 }
 
 
@@ -395,6 +407,22 @@ def get_crawler_config_payload(db: Session) -> CrawlerConfigResponse:
     )
 
 
+def get_notification_config_payload(db: Session) -> NotificationConfigResponse:
+    settings = get_settings()
+    smtp_password = get_config_value(db, "smtp_password", settings.smtp_password or "")
+    webhook_secret = get_config_value(db, "webhook_secret", settings.webhook_secret or "")
+    return NotificationConfigResponse(
+        smtp_host=get_config_value(db, "smtp_host", settings.smtp_host or "") or None,
+        smtp_port=_parse_int(get_config_value(db, "smtp_port", str(settings.smtp_port)), settings.smtp_port),
+        smtp_user=get_config_value(db, "smtp_user", settings.smtp_user or "") or None,
+        smtp_from=get_config_value(db, "smtp_from", settings.smtp_from or "") or None,
+        notification_email=get_config_value(db, "notification_email", settings.notification_email or "") or None,
+        webhook_url=get_config_value(db, "webhook_url", settings.webhook_url or "") or None,
+        smtp_password_set=bool(smtp_password),
+        webhook_secret_set=bool(webhook_secret),
+    )
+
+
 @router.get("/vpn", response_model=VPNConfigResponse)
 def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
@@ -531,6 +559,45 @@ def update_crawler_config(config: CrawlerConfigUpdate, db: Session = Depends(get
         set_config_value(db, key, value, description=CRAWLER_CONFIG_DESCRIPTIONS.get(key))
 
     return get_crawler_config_payload(db)
+
+
+@router.get("/notifications", response_model=NotificationConfigResponse)
+def get_notification_config(db: Session = Depends(get_db)):
+    """Get notification configuration."""
+    return get_notification_config_payload(db)
+
+
+@router.put("/notifications", response_model=NotificationConfigResponse)
+def update_notification_config(config: NotificationConfigUpdate, db: Session = Depends(get_db)):
+    """Update notification configuration."""
+    plain_values = {
+        "smtp_host": (config.smtp_host or "").strip(),
+        "smtp_port": str(config.smtp_port),
+        "smtp_user": (config.smtp_user or "").strip(),
+        "smtp_from": (config.smtp_from or "").strip(),
+        "notification_email": (config.notification_email or "").strip(),
+        "webhook_url": (config.webhook_url or "").strip(),
+    }
+    secret_values = {
+        "smtp_password": config.smtp_password,
+        "webhook_secret": config.webhook_secret,
+    }
+
+    for key, value in plain_values.items():
+        set_config_value(db, key, value, description=NOTIFICATION_CONFIG_DESCRIPTIONS.get(key))
+
+    for key, value in secret_values.items():
+        if value is None:
+            continue
+        set_config_value(
+            db,
+            key,
+            value.strip(),
+            encrypted=True,
+            description=NOTIFICATION_CONFIG_DESCRIPTIONS.get(key),
+        )
+
+    return get_notification_config_payload(db)
 
 
 @router.put("/vpn", response_model=VPNConfigResponse)
