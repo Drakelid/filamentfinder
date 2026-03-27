@@ -52,10 +52,10 @@ DOMAIN_READY_SELECTORS = {
         '[class*="price"]',
     ],
     'csmegastore.no': [
-        # Products are rendered via JS; wait for product anchor links
+        # Products are rendered via JS (SPA); wait for product cards or anchor links
+        'div.product-card',
         'a[href*="/i/"]',
-        '[class*="product"]',
-        'h3',
+        'span.price',
     ],
 }
 

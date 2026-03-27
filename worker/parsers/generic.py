@@ -86,6 +86,8 @@ class GenericParser(BaseParser):
         '.product-list-item',  # Multicom.no
         '.WebPubElement.pub-productlisting',  # polyalkemi.no (custom Knockout.js platform)
         '.pub-productlisting',  # polyalkemi.no
+        'div.product-card',  # csmegastore.no
+        'div.product-item',  # avxperten.no and generic
     ]
     STOCK_TRUE_KEYWORDS = [
         'in stock',
@@ -127,6 +129,8 @@ class GenericParser(BaseParser):
         'not available',
         'notify me',
         'ubekreftet',  # polyalkemi.no: "Ubekreftet 23.04.2026" = uncertain/delayed delivery
+        'varen er dessverre utgått',  # csmegastore.no: "item is unfortunately discontinued"
+        'utgått',  # Generic Norwegian: discontinued
     ]
     STOCK_TRUE_CLASSES = [
         'in-stock',
@@ -426,97 +430,42 @@ class GenericParser(BaseParser):
     def _extract_from_avxperten(self, soup, url: str) -> List[ParsedProduct]:
         """Extract products from avxperten.no listing pages.
 
-        Actual listing HTML structure — the <a> tag IS the product card:
-          <a href="/product-slug.asp">
-            <img src="/images/product/..." />
-            <h3>Product Name</h3>
-            <p class="price">143 kr</p>
-            <button class="buy-button">Kjøp</button>
-            <p class="stock-status">På lager</p>
-            <p class="delivery-info">Levering: 3 virkedag</p>
-          </a>
+        Actual server-rendered HTML structure (no JS required):
+          <div class="product-item">
+            <a href="/product-slug.asp"><img src="/images/product/ID/350x350/UUID.jpg" /></a>
+            <h3><a href="/product-slug.asp">Product Name</a></h3>
+            <div class="price">143 kr</div>
+            <div class="stock-status">På lager</div>
+            <div class="delivery">Levering: 3 virkedag</div>
+            <a href="/checkout/cart/add?id=ID&..." class="buy-button">Kjøp</a>
+          </div>
+
+        Note: the outer <a> (image link) and the h3 <a> both end in .asp.
+        The card container is div.product-item, NOT the <a> tag.
         """
         products = []
         seen_urls: set = set()
-        for card in soup.find_all('a', href=True):
-            href = card.get('href', '')
-            # Only product links end with .asp
-            if not href.lower().endswith('.asp'):
-                continue
-            name_elem = card.find(['h3', 'h2', 'h4'])
+
+        for card in soup.select('div.product-item'):
+            # Name lives in h3 > a (or h2/h4 > a as fallback)
+            name_elem = card.select_one('h3 a, h3, h2 a, h2, h4 a, h4')
             if not name_elem:
                 continue
             name = name_elem.get_text(strip=True)
             if not name:
                 continue
-            if not href.startswith('http'):
-                href = urljoin(url, href)
-            if href in seen_urls:
-                continue
-            seen_urls.add(href)
-            # Price — try specific price element first, fall back to any price-like p/span
-            price = None
-            currency = None
-            price_elem = card.select_one('p.price, .price, span.price, [class*="price"]')
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                price, currency = self._extract_price_from_text(price_text, url)
-            # Stock — check element classes and text
-            in_stock = None
-            stock_elem = card.select_one(
-                'p.stock-status, p.stock, .stock-status, .stock, .instock, '
-                '.lagerstatus, [class*="stock"], [class*="lager"]'
-            )
-            if stock_elem:
-                in_stock = self._detect_stock_from_element(stock_elem)
-            if in_stock is None:
-                # Fall back to scanning paragraph text for stock keywords
-                for p in card.find_all(['p', 'span']):
-                    text = p.get_text(strip=True)
-                    result = self._detect_stock_from_text(text)
-                    if result is not None:
-                        in_stock = result
+
+            # URL: prefer h3 link, then any .asp link that isn't the buy button
+            href = None
+            h3_link = card.select_one('h3 a[href]')
+            if h3_link:
+                href = h3_link.get('href', '')
+            if not href:
+                for a in card.find_all('a', href=True):
+                    a_href = a.get('href', '')
+                    if a_href.lower().endswith('.asp'):
+                        href = a_href
                         break
-            # Image
-            image_url = None
-            img = card.find('img')
-            if img:
-                image_url = img.get('src') or img.get('data-src')
-                if image_url and not image_url.startswith('http'):
-                    image_url = urljoin(url, image_url)
-            products.append(ParsedProduct(
-                name=name,
-                url=href,
-                price=price,
-                currency=currency,
-                image_url=image_url,
-                in_stock=in_stock,
-                confidence=0.65,
-            ))
-        return products
-
-    def _extract_from_csmegastore(self, soup, url: str) -> List[ParsedProduct]:
-        """Extract products from csmegastore.no listing pages.
-
-        The listing HTML wraps each product entirely in its anchor tag:
-          <a href="/i/{id}/{slug}">
-            <img src="..." />
-            <strong>Varenr.: ID | SKU</strong>
-            <h3>Product Name</h3>
-            <p>NOK price</p>
-            <span class="stock-status">På lager</span>  (if present)
-          </a>
-        """
-        products = []
-        seen_urls: set = set()
-        for card in soup.select('a[href*="/i/"]'):
-            name_elem = card.select_one('h3, h2, h4')
-            if not name_elem:
-                continue
-            name = name_elem.get_text(strip=True)
-            if not name:
-                continue
-            href = card.get('href', '')
             if not href:
                 continue
             if not href.startswith('http'):
@@ -524,16 +473,30 @@ class GenericParser(BaseParser):
             if href in seen_urls:
                 continue
             seen_urls.add(href)
-            # Price is in a plain <div>NOK 154,00</div> or <p>NOK 1 234,00</p> — no class/id.
-            # Allow space/nbsp as thousands separator (e.g. "NOK 1 234,00").
+
+            # Price — div.price is the specific selector; fall back to generic
             price = None
             currency = None
-            for elem in card.find_all(['div', 'p', 'span']):
-                text = elem.get_text(strip=True)
-                if re.match(r'^NOK[\s\xa0]+\d[\d\s\xa0.,]*$', text, re.IGNORECASE):
-                    price, currency = self._extract_price_from_text(text, url)
-                    if price:
+            price_elem = card.select_one('div.price, .price, [class*="price"]')
+            if price_elem:
+                price_text = price_elem.get_text(strip=True)
+                price, currency = self._extract_price_from_text(price_text, url)
+
+            # Stock — div.stock-status is the specific selector
+            in_stock = None
+            stock_elem = card.select_one(
+                'div.stock-status, .stock-status, .stock, .instock, '
+                '.lagerstatus, [class*="stock"], [class*="lager"]'
+            )
+            if stock_elem:
+                in_stock = self._detect_stock_from_element(stock_elem)
+            if in_stock is None:
+                for elem in card.find_all(['div', 'p', 'span']):
+                    result = self._detect_stock_from_text(elem.get_text(strip=True))
+                    if result is not None:
+                        in_stock = result
                         break
+
             # Image
             image_url = None
             img = card.find('img')
@@ -541,16 +504,95 @@ class GenericParser(BaseParser):
                 image_url = img.get('src') or img.get('data-src')
                 if image_url and not image_url.startswith('http'):
                     image_url = urljoin(url, image_url)
-            # SKU from <strong>Varenr.: ID | SKU</strong>
+
+            products.append(ParsedProduct(
+                name=name,
+                url=href,
+                price=price,
+                currency=currency,
+                image_url=image_url,
+                in_stock=in_stock,
+                confidence=0.7,
+            ))
+
+        return products
+
+    def _extract_from_csmegastore(self, soup, url: str) -> List[ParsedProduct]:
+        """Extract products from csmegastore.no listing pages.
+
+        After JS rendering, the DOM contains product cards:
+          <div class="product-card">
+            <a href="/i/{id}/{slug}">
+              <img src="https://csdam.net/data/..." />
+              <h3>Product Name</h3>
+            </a>
+            <div class="price-section">
+              <span class="price">NOK 149</span>
+            </div>
+            <div class="actions">...</div>
+          </div>
+
+        Fallback: some views wrap the entire card in the anchor tag:
+          <a href="/i/{id}/{slug}">
+            <strong>Varenr.: ID</strong>
+            <h3>Product Name</h3>
+            <p>NOK 149,00</p>
+          </a>
+        """
+        products = []
+        seen_urls: set = set()
+
+        def _parse_card(card, href):
+            name_elem = card.select_one('h3, h2, h4')
+            if not name_elem:
+                return None
+            name = name_elem.get_text(strip=True)
+            if not name or not href:
+                return None
+            if not href.startswith('http'):
+                href_abs = urljoin(url, href)
+            else:
+                href_abs = href
+            if href_abs in seen_urls:
+                return None
+            seen_urls.add(href_abs)
+
+            # Price: try span.price first (JS-rendered), then NOK pattern in any element
+            price, currency = None, None
+            price_elem = card.select_one('span.price, .price-section span, [class*="price"] span')
+            if price_elem:
+                price_text = price_elem.get_text(strip=True)
+                price, currency = self._extract_price_from_text(price_text, url)
+            if not price:
+                for elem in card.find_all(['div', 'p', 'span']):
+                    text = elem.get_text(strip=True)
+                    if re.match(r'^NOK[\s\xa0]+\d[\d\s\xa0.,]*$', text, re.IGNORECASE):
+                        price, currency = self._extract_price_from_text(text, url)
+                        if price:
+                            break
+
+            # Image
+            image_url = None
+            img = card.find('img')
+            if img:
+                image_url = img.get('src') or img.get('data-src')
+                if image_url and not image_url.startswith('http'):
+                    image_url = urljoin(url, image_url)
+
+            # SKU from <strong>Varenr.: 12345</strong> if present
             sku = None
             strong_elem = card.find('strong')
             if strong_elem:
-                strong_text = strong_elem.get_text(strip=True)
-                # "Varenr.: 12345 | ABC-123" → extract numeric ID or SKU part
-                sku_match = re.search(r'(?:Varenr\.?:?\s*)(\d+)', strong_text, re.IGNORECASE)
+                sku_match = re.search(r'(?:Varenr\.?:?\s*)(\d+)', strong_elem.get_text(strip=True), re.IGNORECASE)
                 if sku_match:
                     sku = sku_match.group(1)
-            # Stock — check for explicit stock elements or text
+            # Also try to extract ID from URL pattern /i/{id}/
+            if not sku:
+                id_match = re.search(r'/i/(\d+)/', href_abs)
+                if id_match:
+                    sku = id_match.group(1)
+
+            # Stock
             in_stock = None
             stock_elem = card.select_one(
                 '.stock-status, .stock, .availability, [class*="stock"], [class*="lager"]'
@@ -559,49 +601,92 @@ class GenericParser(BaseParser):
                 in_stock = self._detect_stock_from_element(stock_elem)
             if in_stock is None:
                 for elem in card.find_all(['span', 'p', 'div']):
-                    text = elem.get_text(strip=True)
-                    result = self._detect_stock_from_text(text)
+                    result = self._detect_stock_from_text(elem.get_text(strip=True))
                     if result is not None:
                         in_stock = result
                         break
-            products.append(ParsedProduct(
-                name=name,
-                url=href,
-                price=price,
-                currency=currency,
-                image_url=image_url,
-                sku=sku,
-                in_stock=in_stock,
-                confidence=0.65,
-            ))
+
+            return ParsedProduct(
+                name=name, url=href_abs, price=price, currency=currency,
+                image_url=image_url, sku=sku, in_stock=in_stock, confidence=0.65,
+            )
+
+        # Primary: div.product-card with inner anchor
+        for card in soup.select('div.product-card'):
+            link = card.find('a', href=True)
+            href = link.get('href', '') if link else ''
+            if not href or '/i/' not in href:
+                continue
+            product = _parse_card(card, href)
+            if product:
+                products.append(product)
+
+        # Fallback: anchor-wrapped cards (older/alt view)
+        if not products:
+            for card in soup.select('a[href*="/i/"]'):
+                href = card.get('href', '')
+                product = _parse_card(card, href)
+                if product:
+                    products.append(product)
+
         return products
 
     def _extract_from_polyalkemi(self, soup, url: str) -> List[ParsedProduct]:
         """Extract products from polyalkemi.no listing pages.
 
         polyalkemi.no uses a custom Knockout.js platform (NOT WooCommerce).
-        After browser rendering the DOM contains:
+        Two rendering modes may be encountered after browser execution:
+
+        Mode A — grid/card view (.WebPubElement.pub-productlisting):
           <div class="WebPubElement pub-productlisting">
             <a href="/brand/ID/slug"><img src="..." /></a>
             <a href="/brand/ID/slug"><span>Product Name</span></a>
             <span>VarenrID</span>
-            <span class="bold">299,- kr</span>   ← Knockout rendered price
+            <span class="bold">239,-</span>   ← Knockout rendered price
             <span>20+ på lager</span>
-            <span class="DynamicStockTooltipContainer">
-              <span>Ubekreftet 23.04.2026</span>
-            </span>
+            <span class="DynamicStockTooltipContainer"><span>Ubekreftet …</span></span>
             <button class="btn btn-default ad-buy-button">Kjøp</button>
           </div>
+
+        Mode B — table/list view (Knockout.js tr rows):
+          <tr data-bind="css: { 'active': $parent.CurrentPlid() == ProduktLagerID}">
+            <td class="Left">
+              <div class="ProduktImg" data-bind="html: ImageTag"><img src="..." /></div>
+            </td>
+            <td>
+              <a class="NoUnderLine" data-bind="attr:{ href: ProduktLink }" href="/brand/ID/slug">
+                <span data-bind="html: ProduktDesc1">Name</span><br />
+                <span data-bind="html: ProduktDesc2">Colour/variant</span>
+              </a>
+            </td>
+            <td><span class="bold" data-bind="html: Price">239,-</span></td>
+          </tr>
         """
         products = []
         seen_urls: set = set()
 
+        def _make_product(name, product_url, price_text, img_elem, stock_text, sku):
+            price, currency = self._extract_price_from_text(price_text, url) if price_text else (None, None)
+            if not price:
+                # Scan text for price pattern (digits + kr/NOK/,-)
+                if price_text and re.search(r'\d[\d\s,.]*\s*(?:,-|kr|NOK)', price_text, re.IGNORECASE):
+                    price, currency = self._extract_price_from_text(price_text, url)
+            image_url = None
+            if img_elem:
+                image_url = img_elem.get('src') or img_elem.get('data-src')
+                if image_url and not image_url.startswith('http'):
+                    image_url = urljoin(url, image_url)
+            in_stock = self._detect_stock_from_text(stock_text) if stock_text else None
+            return ParsedProduct(
+                name=name, url=product_url, price=price, currency=currency,
+                image_url=image_url, sku=sku, in_stock=in_stock, confidence=0.7,
+            )
+
+        # --- Mode A: grid/card view ---
         for card in soup.select('.WebPubElement.pub-productlisting, .pub-productlisting'):
-            # Name and URL come from the anchor that contains a text <span>
             name = None
             product_url = None
-            anchors = card.find_all('a', href=True)
-            for anchor in anchors:
+            for anchor in card.find_all('a', href=True):
                 span = anchor.find('span')
                 candidate = span.get_text(strip=True) if span else anchor.get_text(strip=True)
                 if candidate and len(candidate) > 3:
@@ -609,68 +694,68 @@ class GenericParser(BaseParser):
                     href = anchor.get('href', '')
                     product_url = href if href.startswith('http') else urljoin(url, href)
                     break
-
-            if not name or not product_url:
-                continue
-            if product_url in seen_urls:
+            if not name or not product_url or product_url in seen_urls:
                 continue
             seen_urls.add(product_url)
 
-            # Price: Knockout.js renders it into <span class="bold"> after page load
-            price = None
-            currency = None
             price_elem = card.select_one('span.bold, .bold')
-            if price_elem:
-                price_text = price_elem.get_text(strip=True)
-                price, currency = self._extract_price_from_text(price_text, url)
-            if not price:
-                # Scan all spans for a price-like pattern (digits + kr/NOK)
+            price_text = price_elem.get_text(strip=True) if price_elem else None
+            if not price_text:
                 for span in card.find_all('span'):
-                    text = span.get_text(strip=True)
-                    if re.search(r'\d[\d\s,.]*\s*(?:,-|kr|NOK)', text, re.IGNORECASE):
-                        price, currency = self._extract_price_from_text(text, url)
-                        if price:
-                            break
+                    t = span.get_text(strip=True)
+                    if re.search(r'\d[\d\s,.]*\s*(?:,-|kr|NOK)', t, re.IGNORECASE):
+                        price_text = t
+                        break
 
-            # Stock — prefer the DynamicStockTooltipContainer, then free-text spans
-            in_stock = None
+            stock_text = None
             tooltip = card.select_one('.DynamicStockTooltipContainer')
             if tooltip:
-                in_stock = self._detect_stock_from_text(tooltip.get_text(strip=True))
-            if in_stock is None:
+                stock_text = tooltip.get_text(strip=True)
+            if not stock_text:
                 for span in card.find_all('span'):
-                    text = span.get_text(strip=True)
-                    if any(kw in text.lower() for kw in ('lager', 'bestillingsvare', 'ubekreftet', 'tilgjengelig')):
-                        in_stock = self._detect_stock_from_text(text)
-                        if in_stock is not None:
-                            break
+                    t = span.get_text(strip=True)
+                    if any(kw in t.lower() for kw in ('lager', 'bestillingsvare', 'ubekreftet', 'tilgjengelig')):
+                        stock_text = t
+                        break
 
-            # SKU from "VarenrXXX" span
             sku = None
             for span in card.find_all('span'):
-                text = span.get_text(strip=True)
-                if text.lower().startswith('varenr'):
-                    sku = re.sub(r'(?i)varenr\.?\s*:?\s*', '', text).strip()
+                t = span.get_text(strip=True)
+                if t.lower().startswith('varenr'):
+                    sku = re.sub(r'(?i)varenr\.?\s*:?\s*', '', t).strip()
                     break
 
-            # Image
-            image_url = None
-            img = card.find('img')
-            if img:
-                image_url = img.get('src') or img.get('data-src')
-                if image_url and not image_url.startswith('http'):
-                    image_url = urljoin(url, image_url)
+            products.append(_make_product(name, product_url, price_text, card.find('img'), stock_text, sku))
 
-            products.append(ParsedProduct(
-                name=name,
-                url=product_url,
-                price=price,
-                currency=currency,
-                image_url=image_url,
-                sku=sku,
-                in_stock=in_stock,
-                confidence=0.7,
-            ))
+        # --- Mode B: Knockout.js table rows ---
+        if not products:
+            for card in soup.select('tr[data-bind*="CurrentPlid"]'):
+                desc1 = card.select_one('span[data-bind="html: ProduktDesc1"]')
+                desc2 = card.select_one('span[data-bind="html: ProduktDesc2"]')
+                name_parts = [s.get_text(strip=True) for s in [desc1, desc2] if s and s.get_text(strip=True)]
+                name = ' '.join(name_parts) if name_parts else None
+                if not name:
+                    continue
+
+                link = card.select_one('a[data-bind*="ProduktLink"]') or card.find('a', href=True)
+                if not link:
+                    continue
+                product_url = link.get('href', '')
+                if not product_url:
+                    continue
+                if not product_url.startswith('http'):
+                    product_url = urljoin(url, product_url)
+                if product_url in seen_urls:
+                    continue
+                seen_urls.add(product_url)
+
+                price_span = card.select_one('span.bold[data-bind*="Price"], span.bold')
+                price_text = price_span.get_text(strip=True) if price_span else None
+
+                img_div = card.select_one('div.ProduktImg')
+                img_elem = img_div.find('img') if img_div else card.find('img')
+
+                products.append(_make_product(name, product_url, price_text, img_elem, None, None))
 
         return products
 
