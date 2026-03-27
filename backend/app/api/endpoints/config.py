@@ -68,6 +68,8 @@ NOTIFICATION_CONFIG_DESCRIPTIONS = {
     "webhook_url": "Webhook destination URL for notifications",
     "webhook_secret": "Shared secret used to sign notification webhooks",
 }
+LEGACY_CRAWLER_USER_AGENT = "FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)"
+DEFAULT_BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
 
 
 @lru_cache()
@@ -381,10 +383,21 @@ def _serialize_bool(value: bool) -> str:
     return "true" if value else "false"
 
 
+def _normalize_crawler_user_agent(value: str | None, default: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized or normalized == LEGACY_CRAWLER_USER_AGENT:
+        return default
+    return normalized
+
+
 def get_crawler_config_payload(db: Session) -> CrawlerConfigResponse:
     settings = get_settings()
+    raw_user_agent = get_config_value(db, "crawler_user_agent", settings.crawler_user_agent)
+    user_agent = _normalize_crawler_user_agent(raw_user_agent, settings.crawler_user_agent)
+    if user_agent != (raw_user_agent or "").strip():
+        set_config_value(db, "crawler_user_agent", user_agent, description=CRAWLER_CONFIG_DESCRIPTIONS.get("crawler_user_agent"))
     return CrawlerConfigResponse(
-        user_agent=get_config_value(db, "crawler_user_agent", settings.crawler_user_agent) or settings.crawler_user_agent,
+        user_agent=user_agent,
         rate_limit=_parse_float(get_config_value(db, "crawler_rate_limit", str(settings.crawler_rate_limit)), settings.crawler_rate_limit),
         min_delay=_parse_float(get_config_value(db, "crawler_min_delay", "2.0"), 2.0),
         max_delay=_parse_float(get_config_value(db, "crawler_max_delay", "5.0"), 5.0),
@@ -540,7 +553,7 @@ def get_crawler_config(db: Session = Depends(get_db)):
 def update_crawler_config(config: CrawlerConfigUpdate, db: Session = Depends(get_db)):
     """Update crawler configuration."""
     values = {
-        "crawler_user_agent": config.user_agent,
+        "crawler_user_agent": _normalize_crawler_user_agent(config.user_agent, DEFAULT_BROWSER_USER_AGENT),
         "crawler_rate_limit": str(config.rate_limit),
         "crawler_min_delay": str(config.min_delay),
         "crawler_max_delay": str(config.max_delay),

@@ -35,6 +35,8 @@ DB_CONFIG_CASTERS = {
     "webhook_url": str,
     "webhook_secret": str,
 }
+LEGACY_CRAWLER_USER_AGENT = "FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)"
+DEFAULT_BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
 
 
 class WorkerSettings(BaseSettings):
@@ -42,7 +44,7 @@ class WorkerSettings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     
     crawler_js_domains: str = ""   # Extra comma-separated domains that need Playwright, beyond the hardcoded list
-    crawler_user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+    crawler_user_agent: str = DEFAULT_BROWSER_USER_AGENT
     crawler_rate_limit: float = 0.5  # Max 0.5 requests per second (2 seconds between requests)
     crawler_min_delay: float = 2.0  # Minimum delay between requests in seconds
     crawler_max_delay: float = 5.0  # Maximum delay for random jitter
@@ -104,6 +106,13 @@ def _coerce_config_value(value: object, caster: type):
     return str(value)
 
 
+def _normalize_crawler_user_agent(value: object) -> str:
+    normalized = str(value).strip()
+    if not normalized or normalized == LEGACY_CRAWLER_USER_AGENT:
+        return DEFAULT_BROWSER_USER_AGENT
+    return normalized
+
+
 def _get_fernet() -> Fernet | None:
     encryption_key = (os.environ.get("CONFIG_ENCRYPTION_KEY") or "").strip()
     if not encryption_key:
@@ -150,7 +159,10 @@ def _load_db_overrides(settings: WorkerSettings) -> dict[str, object]:
                     decoded_value = _decrypt_if_needed(raw_value, bool(encrypted))
                     if decoded_value == "" and caster is not str:
                         continue
-                    overrides[key] = _coerce_config_value(decoded_value, caster)
+                    coerced = _coerce_config_value(decoded_value, caster)
+                    if key == "crawler_user_agent":
+                        coerced = _normalize_crawler_user_agent(coerced)
+                    overrides[key] = coerced
                 except (TypeError, ValueError):
                     continue
             return overrides
