@@ -583,6 +583,15 @@ class GenericParser(BaseParser):
                         currency = self._extract_currency(elem.get_text(), url)
                     break
         
+        # csmegastore.no uses plain <span> NOK 154,00 </span> — no class/id/itemprop
+        if not price and 'csmegastore.no' in urlparse(url).netloc:
+            for elem in soup.find_all(['span', 'p', 'div']):
+                text = elem.get_text(strip=True)
+                if re.match(r'^NOK\s+[\d.,]+$', text, re.IGNORECASE):
+                    price, currency = self._extract_price_from_text(text, url)
+                    if price:
+                        break
+
         old_price_selectors = ['.was-price', '.old-price', '.original-price', 'del .price', '.list-price', 's .price']
         for selector in old_price_selectors:
             elem = soup.select_one(selector)
