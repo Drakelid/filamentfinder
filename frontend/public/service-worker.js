@@ -1,8 +1,8 @@
 const APP_PREFIX = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'filamentfinder-shell-v2';
+const CACHE_NAME = 'filamentfinder-shell-v3';
 const CORE_URLS = [
   APP_PREFIX,
-  `${APP_PREFIX}manifest.webmanifest`,
+  `${APP_PREFIX}manifest.webmanifest?v=3`,
   `${APP_PREFIX}fila-logo.png`,
   `${APP_PREFIX}pwa-192.png`,
   `${APP_PREFIX}pwa-512.png`,
