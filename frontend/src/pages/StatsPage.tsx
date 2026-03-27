@@ -7,6 +7,7 @@ import {
   Database,
   Globe,
   Package,
+  HardDrive,
   Server,
   TrendingUp,
 } from 'lucide-react'
@@ -143,6 +144,52 @@ function formatDuration(seconds: number | null): string {
   if (seconds < 60) return `${Math.round(seconds)}s`
   if (seconds < 3600) return `${Math.round(seconds / 60)}m`
   return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`
+}
+
+function formatBytes(value: number | null | undefined): string {
+  if (value === null || value === undefined) return 'Unknown'
+  if (value < 1024) return `${value} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let size = value / 1024
+  let unitIndex = 0
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+
+  return `${size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[unitIndex]}`
+}
+
+function StorageFootprintCard({ data }: { data: HealthData['storage'] }) {
+  return (
+    <Surface className="p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Storage footprint</p>
+          <p className="mt-2 text-3xl font-semibold text-slate-50">{formatBytes(data.total_known_bytes)}</p>
+          <p className="mt-2 text-sm text-slate-400">Known storage used by the tracked services from this app container.</p>
+        </div>
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-amber-200">
+          <HardDrive className="h-5 w-5" />
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Database</p>
+          <p className="mt-2 font-mono text-sm text-slate-100">{formatBytes(data.database_bytes)}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Redis</p>
+          <p className="mt-2 font-mono text-sm text-slate-100">{formatBytes(data.redis_bytes)}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-slate-500">App data</p>
+          <p className="mt-2 font-mono text-sm text-slate-100">{formatBytes(data.gluetun_data_bytes)}</p>
+        </div>
+      </div>
+    </Surface>
+  )
 }
 
 function SourceChartTooltip({
@@ -358,6 +405,8 @@ export default function StatsPage() {
           accent="bg-amber-500/10 text-amber-200 border-amber-500/20"
         />
       </div>
+
+      {healthData && <StorageFootprintCard data={healthData.storage} />}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Surface className="p-5">

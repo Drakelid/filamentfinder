@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from fastapi import APIRouter, Depends, Query
+import redis
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, text, case
 from sqlalchemy.exc import OperationalError
@@ -10,6 +11,7 @@ from sqlalchemy.exc import OperationalError
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
 
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import Source, Product, CrawlRun, PriceObservation, PriceChange
 
@@ -273,6 +275,69 @@ def _count_pending_migrations(db: Session) -> Tuple[int, Optional[str], Optional
     return pending, current_revision, head_revision
 
 
+def _get_path_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if path.is_file():
+        return path.stat().st_size
+
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def _get_database_size_bytes(db: Session) -> Optional[int]:
+    bind = db.get_bind()
+    dialect_name = bind.dialect.name
+
+    try:
+        if dialect_name == "postgresql":
+            result = db.execute(text("SELECT pg_database_size(current_database())"))
+            value = result.scalar()
+            return int(value) if value is not None else None
+
+        if dialect_name == "sqlite":
+            database_name = bind.url.database
+            if database_name:
+                return Path(database_name).stat().st_size
+    except Exception:
+        return None
+
+    return None
+
+
+def _get_redis_memory_bytes() -> Optional[int]:
+    settings = get_settings()
+    try:
+        client = redis.from_url(settings.redis_url, decode_responses=True)
+        info = client.info("memory")
+        value = info.get("used_memory")
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _get_storage_summary(db: Session) -> dict:
+    database_bytes = _get_database_size_bytes(db)
+    redis_bytes = _get_redis_memory_bytes()
+    gluetun_data_bytes = _get_path_size_bytes(Path("/gluetun"))
+
+    known_values = [value for value in [database_bytes, redis_bytes, gluetun_data_bytes] if value is not None]
+    total_known_bytes = sum(known_values) if known_values else None
+
+    return {
+        "database_bytes": database_bytes,
+        "redis_bytes": redis_bytes,
+        "gluetun_data_bytes": gluetun_data_bytes,
+        "total_known_bytes": total_known_bytes,
+    }
+
+
 @router.get("/health")
 def get_system_health(db: Session = Depends(get_db)):
     latest_scan: Optional[datetime] = db.query(func.max(Source.last_scan_at)).scalar()
@@ -291,4 +356,5 @@ def get_system_health(db: Session = Depends(get_db)):
             "current_revision": current_revision,
             "head_revision": head_revision,
         },
+        "storage": _get_storage_summary(db),
     }

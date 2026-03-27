@@ -215,23 +215,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </nav>
 
             <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => setPaletteOpen(true)}
-                className={`flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 transition hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-white ${
-                  collapsed ? 'justify-center px-2.5' : ''
-                }`}
-              >
-                <Command className="h-4 w-4 shrink-0 text-violet-300" />
-                {!collapsed && (
-                  <>
-                    <span className="flex-1 text-left font-medium">Command palette</span>
-                    <span className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-400">
-                      Ctrl K
-                    </span>
-                  </>
-                )}
-              </button>
               {!collapsed && (
                 <button
                   type="button"

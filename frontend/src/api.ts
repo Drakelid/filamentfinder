@@ -183,6 +183,12 @@ export interface HealthData {
     current_revision: string | null
     head_revision: string | null
   }
+  storage: {
+    database_bytes: number | null
+    redis_bytes: number | null
+    gluetun_data_bytes: number | null
+    total_known_bytes: number | null
+  }
 }
 
 export interface LatestPrice {
