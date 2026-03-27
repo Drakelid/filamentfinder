@@ -82,6 +82,7 @@ class GenericParser(BaseParser):
         '.thumbnail[itemtype*="Product"]',  # 3dnet.no (Shopify Turbo theme)
         '.product-wrap',  # 3dnet.no (Shopify Turbo theme)
         '.thumbnail .product-wrap',  # 3dnet.no combined
+        '.product-list-item',  # Multicom.no
     ]
     STOCK_TRUE_KEYWORDS = [
         'in stock',
@@ -575,6 +576,8 @@ class GenericParser(BaseParser):
                     '.product-name, .product-title',
                     '.m-product-card__name',  # Computersalg
                     '.category_prod_name',  # Elefun
+                    '.site-productlist-name',  # Proshop.no
+                    '.product-list-item__name',  # Multicom.no
                     'a[class*="name"], a[class*="title"]',
                     '[class*="name"]',
                 ]
@@ -612,8 +615,10 @@ class GenericParser(BaseParser):
                 '.site-currency-lg',  # Proshop.no
                 '.m-product-card__price',  # Computersalg
                 '.category_prod_price',  # Elefun
+                '.product-list-item__price',  # Multicom.no
+                '.listing-price',  # Multicom.no (alt)
                 '.price--current',
-                '.price--reduced', 
+                '.price--reduced',
                 '.sale-price',
                 '.current-price',
                 '.price',
@@ -638,7 +643,7 @@ class GenericParser(BaseParser):
             attr_stock = card.get('data-in-stock') or card.get('data-availability') or card.get('data-stock')
             card_stock = self._interpret_stock_value(attr_stock)
             if card_stock is None:
-                stock_elem = card.select_one('.category_prod_stock, .stock, .availability')
+                stock_elem = card.select_one('.category_prod_stock, .stock, .availability, .product-list-item__stock')
                 card_stock = self._detect_stock_from_element(stock_elem)
 
             products.append(ParsedProduct(
@@ -705,6 +710,7 @@ class GenericParser(BaseParser):
             r'/[^/]+/[^/]+/\d{6,}$',  # Generic pattern: category/name/numeric-id
             r'/i/\d+/',  # Computersalg pattern: /i/4832483/product-name
             r'/vare-\d+/',  # Elefun pattern: /vare-69949/product-name
+            r'cat-p/p\d+',  # Multicom.no product pattern: /product-name/cat-p/p3340988
             r'/[^/]+/[a-z]{2,4}\d{2,}[a-z]*/',  # PolyAlkemi pattern: /brand/SKU/product-name (SKU like anep17aub)
             r'/[^/]+/[^/]+/[^/]+-[^/]+-[^/]+$',  # Generic 3-segment with dashes: /brand/sku/product-name-with-dashes
         ]
@@ -727,7 +733,7 @@ class GenericParser(BaseParser):
                     links.add(href)
                     break
         
-        for card in soup.select('.product-card, .product-item, .product, [data-product], article[class*="product"], li[class*="product"], div[class*="product-card"], .grid-item, .site-productlist-item, .category_prod, .m-product-card, .plp-card'):
+        for card in soup.select('.product-card, .product-item, .product, [data-product], article[class*="product"], li[class*="product"], div[class*="product-card"], .grid-item, .site-productlist-item, .category_prod, .m-product-card, .plp-card, .product-list-item'):
             link = card.find('a', href=True)
             if link:
                 href = link.get('href')

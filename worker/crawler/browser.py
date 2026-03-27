@@ -11,10 +11,11 @@ JS_RENDERED_DOMAINS = {
     'elefun.no',
     'computersalg.no',
     'clasohlson.com',
-    '3djake.no',  # Products loaded via JS
+    '3djake.no',   # Products loaded via JS
     'proshop.no',  # Blocks regular HTTP requests with 403
-    '3dnet.no',  # JSON-LD ItemList loaded via JS
+    '3dnet.no',    # JSON-LD ItemList loaded via JS
     'polyalkemi.no',  # WooCommerce with JS-loaded content
+    'multicom.no',    # JS-rendered product listings
 }
 
 DOMAIN_READY_SELECTORS = {
@@ -24,14 +25,29 @@ DOMAIN_READY_SELECTORS = {
         'a[href*="/vare-"]',
     ],
     'polyalkemi.no': [
-        'a[href*="/add-north/"]',
-        '[class*="price"]',
-        'h1',
+        # Wait for WooCommerce product grid — any brand, not just Add North
+        'ul.products li.product',
+        '.woocommerce-loop-product__title',
+        '.woocommerce-Price-amount',
     ],
     '3dnet.no': [
         '.thumbnail[itemtype*="Product"]',
         '.product-wrap',
         'script[type="application/ld+json"]',
+    ],
+    'proshop.no': [
+        '.site-productlist-item',
+        '.site-currency-lg',
+    ],
+    '3djake.no': [
+        '[data-json]',
+        '[data-product]',
+    ],
+    'multicom.no': [
+        '.product-list-item',
+        '.product-item',
+        'li[class*="product"]',
+        '[class*="price"]',
     ],
 }
 
