@@ -1,5 +1,10 @@
 const API_BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/api`
-const ADMIN_API_KEY = import.meta.env.VITE_ADMIN_API_KEY?.trim()
+// Prefer runtime-injected key (set by entrypoint.sh from ADMIN_API_KEY env var).
+// Falls back to build-time VITE_ADMIN_API_KEY for local dev.
+const ADMIN_API_KEY = (
+  (window as unknown as Record<string, string>).__ADMIN_API_KEY__ ||
+  import.meta.env.VITE_ADMIN_API_KEY
+)?.trim() || undefined
 
 export interface CrawlRules {
   max_pages: number
