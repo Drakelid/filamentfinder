@@ -508,12 +508,13 @@ class GenericParser(BaseParser):
             if href in seen_urls:
                 continue
             seen_urls.add(href)
-            # Price is in a plain <div>NOK 154,00</div> or <p>NOK 154,00</p> — no class/id
+            # Price is in a plain <div>NOK 154,00</div> or <p>NOK 1 234,00</p> — no class/id.
+            # Allow space/nbsp as thousands separator (e.g. "NOK 1 234,00").
             price = None
             currency = None
             for elem in card.find_all(['div', 'p']):
                 text = elem.get_text(strip=True)
-                if re.match(r'^NOK\s+[\d.,]+$', text, re.IGNORECASE):
+                if re.match(r'^NOK[\s\xa0]+\d[\d\s\xa0.,]*$', text, re.IGNORECASE):
                     price, currency = self._extract_price_from_text(text, url)
                     if price:
                         break
@@ -594,10 +595,11 @@ class GenericParser(BaseParser):
             if banner:
                 price, currency = self._extract_price_from_text(banner.get_text(strip=True), url)
             if not price:
-                # Fallback: find any element whose sole text is "NOK <amount>"
+                # Fallback: find any element whose sole text is "NOK <amount>".
+                # Allow space/nbsp as thousands separator (e.g. "NOK 1 234,00").
                 for elem in soup.find_all(['span', 'p', 'div']):
                     text = elem.get_text(strip=True)
-                    if re.match(r'^NOK\s+[\d.,]+$', text, re.IGNORECASE):
+                    if re.match(r'^NOK[\s\xa0]+\d[\d\s\xa0.,]*$', text, re.IGNORECASE):
                         price, currency = self._extract_price_from_text(text, url)
                         if price:
                             break
