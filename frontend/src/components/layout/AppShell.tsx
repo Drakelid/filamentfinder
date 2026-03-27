@@ -1,10 +1,10 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronsLeft, ChevronsRight, Clock3, Command, Menu, RefreshCw, Sparkles, X } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Clock3, Command, Menu, MoreHorizontal, RefreshCw, Sparkles, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { api, fetchDeals } from '../../api'
-import { NAV_SECTIONS, resolvePageMeta } from './navigation'
+import { NAV_SECTIONS, resolvePageMeta, type NavItem } from './navigation'
 import CommandPalette, { type CommandAction } from './CommandPalette'
 import { useToast } from '../ui/Toast'
 import Skeleton from '../ui/Skeleton'
@@ -70,6 +70,37 @@ function SidebarLink({
   )
 }
 
+function MobileTabButton({
+  item,
+  active,
+  badge,
+  onNavigate,
+}: {
+  item: NavItem
+  active: boolean
+  badge?: ReactNode
+  onNavigate?: () => void
+}) {
+  const Icon = item.icon
+  return (
+    <Link
+      to={item.to}
+      onClick={onNavigate}
+      className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium transition-colors ${
+        active ? 'bg-violet-500/12 text-white' : 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-200'
+      }`}
+    >
+      <Icon className={`h-4 w-4 ${active ? 'text-violet-300' : 'text-slate-500'}`} />
+      <span className="truncate">{item.label}</span>
+      {badge !== undefined && badge !== null && (
+        <span className="absolute right-3 top-1.5 rounded-full border border-slate-700 bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-200">
+          {badge}
+        </span>
+      )}
+    </Link>
+  )
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -128,6 +159,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [mobileNavOpen])
+
   const refreshShell = async () => {
     await queryClient.invalidateQueries()
     setUpdatedAt(Date.now())
@@ -162,6 +202,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const totalProducts = statsQuery.data?.overview.total_products
   const activeDeals = dealsQuery.data?.length ?? null
   const lastUpdatedLabel = updatedAt ? formatDistanceToNow(new Date(updatedAt), { addSuffix: true }) : 'just now'
+  const mobilePrimaryItems = useMemo(() => {
+    const browse = NAV_SECTIONS.find((section) => section.label === 'BROWSE')?.items ?? []
+    const monitor = NAV_SECTIONS.find((section) => section.label === 'MONITOR')?.items ?? []
+    return [
+      browse.find((item) => item.to === '/products'),
+      browse.find((item) => item.to === '/deals'),
+      monitor.find((item) => item.to === '/sources'),
+      monitor.find((item) => item.to === '/stats'),
+    ].filter((item): item is NavItem => Boolean(item))
+  }, [])
 
   return (
     <div className="min-h-screen bg-shell-900 text-slate-100">
@@ -174,7 +224,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         />
       )}
 
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen pb-24 lg:pb-0">
         <aside
           className={`fixed inset-y-0 left-0 z-40 h-screen shrink-0 border-r border-slate-800/80 bg-shell-950/95 backdrop-blur-xl transition-transform duration-200 ${
             mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
@@ -182,7 +232,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             collapsed ? 'lg:w-20' : 'lg:w-72'
           }`}
         >
-          <div className="flex h-full flex-col gap-6 p-4">
+          <div className="flex h-full flex-col gap-6 p-4 pb-6">
             <div className={`flex items-center gap-3 ${collapsed ? 'lg:justify-center' : ''}`}>
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-amber-400 text-slate-950 shadow-glow">
                 <Sparkles className="h-6 w-6" />
@@ -201,6 +251,22 @@ export default function AppShell({ children }: { children: ReactNode }) {
               >
                 <X className="h-4 w-4" />
               </button>
+            </div>
+
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-4 lg:hidden">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-slate-500">Quick glance</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Products</div>
+                  <div className="mt-1 text-lg font-semibold text-white">
+                    {isProductsBadgeLoading(totalProducts) ? '...' : new Intl.NumberFormat('en-US').format(totalProducts ?? 0)}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Deals</div>
+                  <div className="mt-1 text-lg font-semibold text-white">{activeDeals ?? '...'}</div>
+                </div>
+              </div>
             </div>
 
             <button
@@ -250,11 +316,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </nav>
 
             <div className="space-y-2">
-              {!collapsed && (
+              {(!collapsed || mobileNavOpen) && (
                 <button
                   type="button"
                   onClick={refreshShell}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white lg:flex"
+                  className="flex w-full items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 hover:text-white"
                 >
                   <RefreshCw className="h-4 w-4 shrink-0 text-amber-300" />
                   <span className="flex-1 text-left font-medium">Refresh dashboard</span>
@@ -299,7 +365,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setPaletteOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 sm:px-4"
+                  className="hidden items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 sm:inline-flex sm:px-4"
                 >
                   <Command className="h-4 w-4 text-violet-300" />
                   <span className="hidden sm:inline">Command</span>
@@ -311,6 +377,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-800/90 bg-shell-950/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl lg:hidden">
+        <div className="flex items-center gap-2 rounded-3xl border border-slate-800 bg-slate-900/80 p-2 shadow-xl shadow-black/30">
+          {mobilePrimaryItems.map((item) => {
+            const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+            const badge = item.to === '/products'
+              ? (isProductsBadgeLoading(totalProducts) ? '...' : new Intl.NumberFormat('en-US').format(totalProducts ?? 0))
+              : item.to === '/deals'
+                ? (activeDeals ?? undefined)
+                : undefined
+
+            return (
+              <MobileTabButton
+                key={item.to}
+                item={item}
+                active={active}
+                badge={badge}
+                onNavigate={() => setMobileNavOpen(false)}
+              />
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium transition-colors ${
+              mobileNavOpen ? 'bg-violet-500/12 text-white' : 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-200'
+            }`}
+          >
+            <MoreHorizontal className={`h-4 w-4 ${mobileNavOpen ? 'text-violet-300' : 'text-slate-500'}`} />
+            <span className="truncate">More</span>
+          </button>
+        </div>
+      </nav>
 
       <CommandPalette
         open={paletteOpen}
