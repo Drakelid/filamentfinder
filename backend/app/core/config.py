@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     admin_api_key: Optional[str] = None
     config_encryption_key: Optional[str] = None
     
-    crawler_user_agent: str = "FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)"
+    crawler_user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
     crawler_rate_limit: float = 1.0
     crawler_max_pages: int = 100
     crawler_max_depth: int = 3
