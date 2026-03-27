@@ -95,26 +95,57 @@ class BaseParser(ABC):
         """Clean and parse a price string to Decimal."""
         if not price_str:
             return None
-        
+
         import re
-        cleaned = re.sub(r'[^\d.,]', '', price_str)
-        
-        if ',' in cleaned and '.' in cleaned:
-            if cleaned.rfind(',') > cleaned.rfind('.'):
-                cleaned = cleaned.replace('.', '').replace(',', '.')
-            else:
-                cleaned = cleaned.replace(',', '')
-        elif ',' in cleaned:
-            parts = cleaned.split(',')
-            if len(parts) == 2 and len(parts[1]) == 2:
-                cleaned = cleaned.replace(',', '.')
-            else:
-                cleaned = cleaned.replace(',', '')
-        
-        try:
-            return Decimal(cleaned)
-        except:
+
+        normalized = str(price_str).replace('\xa0', ' ').strip()
+        if not normalized:
             return None
+
+        candidate_pattern = re.compile(r'\d+(?:[\s.,]\d+)*')
+        candidates = []
+
+        for match in candidate_pattern.finditer(normalized):
+            token = match.group(0).strip()
+            if not token or len(re.sub(r'\D', '', token)) > 9:
+                continue
+
+            cleaned = token.replace(' ', '')
+            if ',' in cleaned and '.' in cleaned:
+                if cleaned.rfind(',') > cleaned.rfind('.'):
+                    cleaned = cleaned.replace('.', '').replace(',', '.')
+                else:
+                    cleaned = cleaned.replace(',', '')
+            elif ',' in cleaned:
+                parts = cleaned.split(',')
+                if len(parts) == 2 and len(parts[1]) in {2, 3}:
+                    cleaned = cleaned.replace(',', '.')
+                else:
+                    cleaned = cleaned.replace(',', '')
+            elif '.' in cleaned:
+                parts = cleaned.split('.')
+                if len(parts) > 2:
+                    cleaned = ''.join(parts)
+                elif len(parts) == 2 and len(parts[1]) == 3 and len(parts[0]) <= 3:
+                    cleaned = ''.join(parts)
+
+            try:
+                value = Decimal(cleaned)
+            except Exception:
+                continue
+
+            if value <= 0:
+                continue
+
+            decimal_score = 1 if any(sep in token for sep in [',', '.']) else 0
+            candidates.append((decimal_score, match.start(), value))
+
+        if not candidates:
+            return None
+
+        decimal_candidates = [candidate for candidate in candidates if candidate[0] == 1]
+        chosen = decimal_candidates[-1] if decimal_candidates else candidates[-1]
+        return chosen[2]
     
     def _extract_currency(self, text: str, url: str = '') -> Optional[str]:
         """Extract currency code from text, with URL as fallback context."""

@@ -183,9 +183,12 @@ def list_deals(
         .filter(PriceChange.changed_at >= cutoff)
         .filter(PriceChange.old_price.isnot(None), PriceChange.new_price.isnot(None))
         .filter(PriceChange.old_price > 0)
+        .filter(PriceChange.old_price < 100000)
+        .filter(PriceChange.new_price < 100000)
         .filter(PriceChange.change_type.in_(["decrease", "price_decrease"]))
         .filter(PriceChange.new_price < PriceChange.old_price)
         .filter(pct_drop_expr >= min_pct_drop)
+        .filter(pct_drop_expr <= 95)
     )
 
     if category:
