@@ -598,8 +598,13 @@ class ProductMatcher:
             base_threshold += 0.10
 
         # --- Final decision ---
+        # URL context can substitute for primary signal: if the source is a filament/resin
+        # listing or the product URL itself contains category keywords, trust the score.
+        url_confirms_filament = url_is_filament_related or url_hints_filament
+        url_confirms_resin = url_hints_resin or (url_is_filament_related and 'resin' in url_lower)
+
         if filament_score >= resin_score and filament_score >= base_threshold:
-            if not (primary_filament_signal or has_filament_context):
+            if not (primary_filament_signal or has_filament_context or url_confirms_filament):
                 logger.debug(
                     'product_match_rejected_no_primary_signal',
                     name=product.name,
@@ -630,7 +635,7 @@ class ProductMatcher:
             return result
 
         elif resin_score >= filament_score and resin_score >= base_threshold:
-            if not (primary_resin_signal or has_resin_context):
+            if not (primary_resin_signal or has_resin_context or url_confirms_resin):
                 logger.debug(
                     'product_match_rejected_no_primary_signal',
                     name=product.name,

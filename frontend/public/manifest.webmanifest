@@ -1,7 +1,9 @@
 {
+  "id": "/filamentfinder/",
   "name": "FilamentFinder",
   "short_name": "FilamentFinder",
   "description": "Self-hosted 3D printing filament and resin price tracker.",
+  "version": "2",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
