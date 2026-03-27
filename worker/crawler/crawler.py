@@ -450,6 +450,13 @@ class Crawler:
             
             now = datetime.now(timezone.utc)
             
+            # Absolutize image URL if it came through as a relative path
+            if product.image_url and not product.image_url.startswith('http'):
+                product.image_url = urljoin(product.url or '', product.image_url) or None
+            # Discard obviously broken image URLs (root-relative with no host after urljoin)
+            if product.image_url and not product.image_url.startswith('http'):
+                product.image_url = None
+
             if existing:
                 existing.name = product.name
                 existing.brand = product.brand
@@ -458,7 +465,9 @@ class Crawler:
                 existing.variant = product.variant
                 existing.color = product.color
                 existing.size = product.size
-                existing.image_url = product.image_url
+                # Only update image_url if the new parse actually found one; don't clobber a
+                # valid existing URL with None when a detail page simply has no image selector match.
+                existing.image_url = product.image_url or existing.image_url
                 existing.sku = product.sku
                 existing.gtin = product.gtin
                 existing.confidence = product.confidence
