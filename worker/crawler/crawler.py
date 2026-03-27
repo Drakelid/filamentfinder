@@ -412,8 +412,9 @@ class Crawler:
             if add_to_cart_count <= 2:
                 return True
 
-        # ASP.NET product pages (e.g., avxperten.no) — slug.asp with at least one product indicator
-        if url_lower.endswith('.asp') and single_product_score >= 1:
+        # ASP.NET product pages (e.g., avxperten.no) — every .asp slug is a product page;
+        # non-product .asp pages (contact, about) return None from parse_product which is harmless.
+        if url_lower.endswith('.asp'):
             return True
 
         return False

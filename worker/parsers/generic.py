@@ -422,47 +422,55 @@ class GenericParser(BaseParser):
     def _extract_from_avxperten(self, soup, url: str) -> List[ParsedProduct]:
         """Extract products from avxperten.no listing pages.
 
-        The listing HTML has sibling elements inside a generic card container:
-          <a href="product.asp"><img /></a>
-          <div class="product-name">Name</div>
-          <div class="product-price">Price kr</div>
+        Actual listing HTML structure:
+          <article class="product">
+            <h3><a href="/product-slug.asp">Product Name</a></h3>
+            <img src="/images/product/..." />
+            <p class="price">143 kr</p>
+            <a href="/checkout/cart/add?..." class="button">Kjøp</a>
+            <p class="stock">På lager</p>
+          </article>
         """
         products = []
-        for name_elem in soup.select('.product-name'):
-            name = name_elem.get_text(strip=True)
+        for card in soup.select('article.product'):
+            # Name and URL are in the h3 > a link
+            link_elem = card.select_one('h3 a[href], h2 a[href]')
+            if not link_elem:
+                continue
+            name = link_elem.get_text(strip=True)
             if not name:
                 continue
-            parent = name_elem.parent
-            if not parent:
+            href = link_elem.get('href', '')
+            if not href:
                 continue
-            # Find the product .asp link in the same container (not checkout link)
-            product_url = None
-            for a in parent.find_all('a', href=True):
-                href = a.get('href', '')
-                if href.lower().endswith('.asp') and '/checkout/' not in href:
-                    product_url = urljoin(url, href)
-                    break
-            if not product_url:
-                continue
+            if not href.startswith('http'):
+                href = urljoin(url, href)
+            # Price
             price = None
             currency = None
-            price_elem = parent.select_one('.product-price')
+            price_elem = card.select_one('p.price, .price')
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
                 price, currency = self._extract_price_from_text(price_text, url)
+            # Stock from p.stock
+            in_stock = None
+            stock_elem = card.select_one('p.stock')
+            if stock_elem:
+                in_stock = self._detect_stock_from_element(stock_elem)
+            # Image
             image_url = None
-            img = parent.find('img')
+            img = card.find('img')
             if img:
                 image_url = img.get('src') or img.get('data-src')
                 if image_url and not image_url.startswith('http'):
                     image_url = urljoin(url, image_url)
             products.append(ParsedProduct(
                 name=name,
-                url=product_url,
+                url=href,
                 price=price,
                 currency=currency,
                 image_url=image_url,
-                in_stock=None,
+                in_stock=in_stock,
                 confidence=0.4,
             ))
         return products
@@ -734,6 +742,7 @@ class GenericParser(BaseParser):
                 '.category_prod_price',  # Elefun
                 '.product-list-item__price',  # Multicom.no
                 '.listing-price',  # Multicom.no (alt)
+                'p.price',  # avxperten.no
                 '.price--current',
                 '.price--reduced',
                 '.sale-price',
