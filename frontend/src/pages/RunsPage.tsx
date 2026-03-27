@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Loader2, RotateCcw, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, ChevronDown, ChevronRight, Clock, Loader2, RotateCcw, Trash2, XCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { api, CrawlRun } from '../api'
 import { EmptyState, LoadingState, SectionCard, cx } from '../components/admin/AdminUI'
@@ -89,6 +89,11 @@ export default function RunsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs'] }),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (runId: number) => api.runs.delete(runId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runs'] }),
+  })
+
   const runs = data?.items || []
   const summary = useMemo(
     () => ({
@@ -140,6 +145,7 @@ export default function RunsPage() {
                 <th className="px-4 py-3 text-right">Changes</th>
                 <th className="px-4 py-3 text-right">Errors</th>
                 <th className="px-4 py-3 text-right">Retry</th>
+                <th className="px-4 py-3 text-right">Delete</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
@@ -189,10 +195,20 @@ export default function RunsPage() {
                           <span className="text-slate-500">-</span>
                         )}
                       </td>
+                      <td className="px-4 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => deleteMutation.mutate(run.id)}
+                          disabled={deleteMutation.isPending}
+                          className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 px-3 py-1.5 text-xs text-rose-300 transition-colors hover:bg-rose-500/10 disabled:opacity-50"
+                        >
+                          {deleteMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      </td>
                     </tr>
                     {expanded && (
                       <tr key={`${run.id}-details`}>
-                        <td colSpan={10} className="px-4 pb-4">
+                        <td colSpan={11} className="px-4 pb-4">
                           <RunDetails run={run} />
                         </td>
                       </tr>

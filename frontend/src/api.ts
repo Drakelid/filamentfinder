@@ -543,6 +543,7 @@ export const api = {
       return fetchApi<{ items: CrawlRun[]; total: number }>(`/runs${query ? `?${query}` : ''}`)
     },
     get: (id: number) => fetchApi<CrawlRun>(`/runs/${id}`),
+    delete: (id: number) => fetchApi<void>(`/runs/${id}`, { method: 'DELETE' }),
   },
 }
 

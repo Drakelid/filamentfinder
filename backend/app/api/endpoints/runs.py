@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.core.database import get_db
+from app.core.security import require_admin_api_key
 from app.models import CrawlRun
 from app.schemas import CrawlRunResponse, CrawlRunListResponse
 
@@ -47,3 +48,12 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return CrawlRunResponse.model_validate(run)
+
+
+@router.delete("/{run_id}", status_code=204, dependencies=[Depends(require_admin_api_key)])
+def delete_run(run_id: int, db: Session = Depends(get_db)):
+    run = db.query(CrawlRun).filter(CrawlRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    db.delete(run)
+    db.commit()

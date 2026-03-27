@@ -422,29 +422,34 @@ class GenericParser(BaseParser):
     def _extract_from_avxperten(self, soup, url: str) -> List[ParsedProduct]:
         """Extract products from avxperten.no listing pages.
 
-        Actual listing HTML structure:
-          <article class="product">
-            <h3><a href="/product-slug.asp">Product Name</a></h3>
+        Actual listing HTML structure — the <a> tag IS the product card:
+          <a href="/product-slug.asp">
             <img src="/images/product/..." />
+            <h3>Product Name</h3>
             <p class="price">143 kr</p>
-            <a href="/checkout/cart/add?..." class="button">Kjøp</a>
-            <p class="stock">På lager</p>
-          </article>
+            <button class="buy-button">Kjøp</button>
+            <p class="stock-status">På lager</p>
+            <p class="delivery-info">Levering: 3 virkedag</p>
+          </a>
         """
         products = []
-        for card in soup.select('article.product'):
-            # Name and URL are in the h3 > a link
-            link_elem = card.select_one('h3 a[href], h2 a[href]')
-            if not link_elem:
+        seen_urls: set = set()
+        for card in soup.find_all('a', href=True):
+            href = card.get('href', '')
+            # Only product links end with .asp
+            if not href.lower().endswith('.asp'):
                 continue
-            name = link_elem.get_text(strip=True)
+            name_elem = card.find(['h3', 'h2', 'h4'])
+            if not name_elem:
+                continue
+            name = name_elem.get_text(strip=True)
             if not name:
-                continue
-            href = link_elem.get('href', '')
-            if not href:
                 continue
             if not href.startswith('http'):
                 href = urljoin(url, href)
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
             # Price
             price = None
             currency = None
@@ -452,9 +457,9 @@ class GenericParser(BaseParser):
             if price_elem:
                 price_text = price_elem.get_text(strip=True)
                 price, currency = self._extract_price_from_text(price_text, url)
-            # Stock from p.stock
+            # Stock
             in_stock = None
-            stock_elem = card.select_one('p.stock')
+            stock_elem = card.select_one('p.stock-status, p.stock, .stock-status, .stock, .instock')
             if stock_elem:
                 in_stock = self._detect_stock_from_element(stock_elem)
             # Image
