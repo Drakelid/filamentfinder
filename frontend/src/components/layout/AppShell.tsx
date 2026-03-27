@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronsLeft, ChevronsRight, Clock3, Command, Menu, MoreHorizontal, RefreshCw, Sparkles, X } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Clock3, Command, Menu, MoreHorizontal, RefreshCw, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { api, fetchDeals } from '../../api'
 import { NAV_SECTIONS, resolvePageMeta, type NavItem } from './navigation'
@@ -202,6 +202,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const totalProducts = statsQuery.data?.overview.total_products
   const activeDeals = dealsQuery.data?.length ?? null
   const lastUpdatedLabel = updatedAt ? formatDistanceToNow(new Date(updatedAt), { addSuffix: true }) : 'just now'
+  const logoSrc = `${import.meta.env.BASE_URL}fila-logo.png`
   const mobilePrimaryItems = useMemo(() => {
     const browse = NAV_SECTIONS.find((section) => section.label === 'BROWSE')?.items ?? []
     const monitor = NAV_SECTIONS.find((section) => section.label === 'MONITOR')?.items ?? []
@@ -234,8 +235,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         >
           <div className="flex h-full flex-col gap-6 p-4 pb-6">
             <div className={`flex items-center gap-3 ${collapsed ? 'lg:justify-center' : ''}`}>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-amber-400 text-slate-950 shadow-glow">
-                <Sparkles className="h-6 w-6" />
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-slate-800 bg-white/95 shadow-glow">
+                <img src={logoSrc} alt="FilamentFinder logo" className="h-full w-full object-contain p-1" />
               </div>
               {(!collapsed || mobileNavOpen) && (
                 <div className="min-w-0">
