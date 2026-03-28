@@ -1,4 +1,5 @@
 import json
+import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -95,6 +96,12 @@ def fake_redis(monkeypatch):
     redis_client = FakeRedis()
     monkeypatch.setattr("worker.scheduler.redis.from_url", lambda *args, **kwargs: redis_client)
     return redis_client
+
+
+def test_scan_worker_initializes_crawl_semaphore(fake_redis):
+    worker = ScanWorker()
+
+    assert isinstance(worker.crawl_semaphore, asyncio.Semaphore)
 
 
 @pytest.mark.asyncio

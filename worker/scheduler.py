@@ -34,6 +34,7 @@ class ScanWorker:
         self.running = True
         self.active_crawls: Set[int] = set()  # Track active source IDs
         self.crawl_tasks: Set[asyncio.Task] = set()
+        self.crawl_semaphore = asyncio.Semaphore(settings.crawler_max_concurrent_sources)
 
     def refresh_runtime_settings(self):
         refresh_settings()
