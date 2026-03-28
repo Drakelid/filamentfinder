@@ -20,6 +20,7 @@ class GenericParser(BaseParser):
         '[data-price]',
         '.prod_price_current',
         '.category_prod_price',
+        '.site-currency-lg',  # Proshop.no
         '.price',
         '.product-price',
         '.current-price',

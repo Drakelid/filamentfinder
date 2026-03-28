@@ -625,6 +625,13 @@ class Crawler:
             if is_product:
                 logger.info("Detected as product page", url=url)
                 product = parser.parse_product(html, url)
+                # If the selected parser found nothing, fall back to GenericParser
+                if product is None and not isinstance(parser, GenericParser):
+                    generic = next((p for p in self.parsers if isinstance(p, GenericParser)), None)
+                    if generic:
+                        product = generic.parse_product(html, url)
+                        if product:
+                            logger.info("Fallback generic product parse succeeded", url=url, parser=parser.name)
                 if product:
                     logger.info("Parsed product", name=product.name[:80] if product.name else None, price=float(product.price) if product.price else None)
                     await self._process_product(product, parser.name, page_url=url)
@@ -640,6 +647,14 @@ class Crawler:
                         logger.info("Product saved to database", name=product.name[:50] if product.name else None)
 
                 product_links = parser.extract_product_links(html, url)
+                # If the selected parser found nothing, fall back to GenericParser's URL-pattern
+                # based extraction which covers site-specific patterns (e.g. proshop.no).
+                if not product_links and not isinstance(parser, GenericParser):
+                    generic = next((p for p in self.parsers if isinstance(p, GenericParser)), None)
+                    if generic:
+                        product_links = generic.extract_product_links(html, url)
+                        if product_links:
+                            logger.info("Fallback generic link extraction succeeded", count=len(product_links), url=url)
                 logger.info("Extracted product links", count=len(product_links), sample=product_links[:3] if product_links else [])
                 for link in product_links:
                     if self._should_crawl_url(link):
