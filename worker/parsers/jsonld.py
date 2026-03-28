@@ -85,6 +85,13 @@ class JsonLdParser(BaseParser):
                 price = self._clean_price(str(price_str))
             
             currency = offers.get('priceCurrency')
+            # Some stores leave priceCurrency as "USD" in their theme defaults even when
+            # they only sell in a local currency (e.g. Norwegian stores with .no domains).
+            # If the URL strongly implies a different currency, prefer that over "USD".
+            if currency == 'USD':
+                url_currency = self._extract_currency('', url)
+                if url_currency and url_currency != 'USD':
+                    currency = url_currency
             # Fall back to URL-based currency detection if not in JSON-LD
             if not currency:
                 currency = self._extract_currency(str(price_str) if price_str else '', url)

@@ -839,7 +839,10 @@ class Crawler:
                 else:
                     source.failure_streak = 0
                     source.next_retry_at = None
-                    if source.status_message and "consecutive failures" in source.status_message:
+                    if source.status_message and (
+                        "consecutive failures" in source.status_message
+                        or source.status_message.startswith("Stale:")
+                    ):
                         source.status_message = None
 
             db.commit()
