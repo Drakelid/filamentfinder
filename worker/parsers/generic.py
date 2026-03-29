@@ -799,21 +799,41 @@ class GenericParser(BaseParser):
         currency = None
         list_price = None
         
-        for selector in self.PRICE_SELECTORS:
-            elem = soup.select_one(selector)
-            if elem:
-                data_price = elem.get('data-price') or elem.get('content')
-                if data_price:
-                    price = self._clean_price(data_price)
-                else:
-                    price_text = elem.get_text(strip=True)
-                    price, currency = self._extract_price_from_text(price_text, url)
-                
-                if price:
-                    if not currency:
-                        currency = self._extract_currency(elem.get_text(), url)
-                    break
-        
+        # polyalkemi.no: Knockout.js product detail pages use span.bold for both prices AND
+        # weight/specification values. select_one('span.bold') can match a weight element
+        # (e.g. "0,25 kg") before the actual price span, producing a wrong extraction.
+        # Prefer the Knockout data-bind="html: Price" span, then fall back to the first
+        # bold span whose text contains a recognisable Norwegian price pattern (digits + ,-/kr/NOK).
+        if 'polyalkemi.no' in urlparse(url).netloc:
+            price_elem = soup.select_one(
+                'span.bold[data-bind*="Price"], span.bold[data-bind*="price"]'
+            )
+            if price_elem:
+                price, currency = self._extract_price_from_text(price_elem.get_text(strip=True), url)
+            if not price:
+                for span in soup.find_all('span', class_='bold'):
+                    t = span.get_text(strip=True)
+                    if re.search(r'\d[\d\s,.]*\s*(?:,-|kr|NOK)', t, re.IGNORECASE):
+                        price, currency = self._extract_price_from_text(t, url)
+                        if price:
+                            break
+
+        if not price:
+            for selector in self.PRICE_SELECTORS:
+                elem = soup.select_one(selector)
+                if elem:
+                    data_price = elem.get('data-price') or elem.get('content')
+                    if data_price:
+                        price = self._clean_price(data_price)
+                    else:
+                        price_text = elem.get_text(strip=True)
+                        price, currency = self._extract_price_from_text(price_text, url)
+
+                    if price:
+                        if not currency:
+                            currency = self._extract_currency(elem.get_text(), url)
+                        break
+
         # csmegastore.no detail pages: price is in <div class="banner_32"><div><span>NOK X</span></div></div>
         if not price and 'csmegastore.no' in urlparse(url).netloc:
             banner = soup.select_one('div.banner_32 span, div.banner_32')
