@@ -1,11 +1,7 @@
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
-  Bug,
   CheckCircle,
-  ChevronDown,
-  ChevronRight,
   Clock,
   Database,
   Loader2,
@@ -35,9 +31,66 @@ function AlertBadge({ count, label, tone }: { count: number; label: string; tone
   )
 }
 
-function SeverityDot({ tone }: { tone: 'rose' | 'amber' | 'slate' }) {
-  const colors = { rose: 'bg-rose-400', amber: 'bg-amber-400', slate: 'bg-slate-500' }
-  return <span className={cx('mt-1 h-2 w-2 shrink-0 rounded-full', colors[tone])} />
+// ─── error feed ──────────────────────────────────────────────────────────────
+
+interface ErrorEntry {
+  message: string
+  runId: number
+  sourceName: string
+  timestamp: string
+  severity: 'error' | 'warning'
+}
+
+function ErrorFeed({ entries }: { entries: ErrorEntry[] }) {
+  if (!entries.length) {
+    return (
+      <SectionCard eyebrow="Log" title="Error Feed">
+        <div className="flex items-center gap-3 text-sm text-emerald-300">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          No error messages in recent runs.
+        </div>
+      </SectionCard>
+    )
+  }
+
+  return (
+    <SectionCard
+      eyebrow="Log"
+      title="Error Feed"
+      description={`${entries.length} error message${entries.length !== 1 ? 's' : ''} from recent crawler runs`}
+    >
+      <ul className="space-y-2">
+        {entries.map((entry, i) => (
+          <li
+            key={i}
+            className={cx(
+              'grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded-2xl border px-4 py-3',
+              entry.severity === 'error'
+                ? 'border-rose-500/20 bg-rose-950/30'
+                : 'border-amber-500/20 bg-amber-950/30',
+            )}
+          >
+            {/* left column: severity dot aligned with first text line */}
+            <span
+              className={cx(
+                'mt-1.5 h-2 w-2 shrink-0 rounded-full',
+                entry.severity === 'error' ? 'bg-rose-400' : 'bg-amber-400',
+              )}
+            />
+            {/* right column */}
+            <div className="min-w-0 space-y-0.5">
+              <p className={cx('break-all text-sm font-mono', entry.severity === 'error' ? 'text-rose-200' : 'text-amber-200')}>
+                {entry.message}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Run #{entry.runId} · {entry.sourceName} · {format(new Date(entry.timestamp), 'MMM d HH:mm:ss')}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  )
 }
 
 // ─── source issues panel ─────────────────────────────────────────────────────
@@ -92,7 +145,11 @@ function SourceIssuesPanel({ sources }: { sources: Source[] }) {
                       ? 'bg-sky-500/15 text-sky-200 ring-sky-500/20'
                       : 'bg-slate-800 text-slate-300 ring-slate-700/70',
                   )}>
-                    {s.status === 'failed' ? <XCircle className="h-3.5 w-3.5" /> : s.status === 'scanning' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+                    {s.status === 'failed'
+                      ? <XCircle className="h-3.5 w-3.5" />
+                      : s.status === 'scanning'
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Clock className="h-3.5 w-3.5" />}
                     {s.status}
                   </span>
                 </td>
@@ -131,70 +188,9 @@ function SourceIssuesPanel({ sources }: { sources: Source[] }) {
   )
 }
 
-// ─── run error list ──────────────────────────────────────────────────────────
+// ─── runs table ───────────────────────────────────────────────────────────────
 
-function RunErrorRow({ run, sourceName }: { run: CrawlRun; sourceName?: string }) {
-  const [expanded, setExpanded] = useState(false)
-  const hasMessages = (run.error_messages?.length ?? 0) > 0
-
-  return (
-    <>
-      <tr className="hover:bg-slate-900/70">
-        <td className="px-4 py-3">
-          {hasMessages ? (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="rounded-lg border border-slate-700 bg-slate-950/50 p-1 text-slate-300 transition-colors hover:bg-slate-800"
-            >
-              {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-            </button>
-          ) : (
-            <span className="px-2 text-slate-600">—</span>
-          )}
-        </td>
-        <td className="px-4 py-3 font-medium text-slate-100">#{run.id}</td>
-        <td className="px-4 py-3 text-slate-300">{sourceName ?? `Source #${run.source_id}`}</td>
-        <td className="px-4 py-3">
-          <span className={cx(
-            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1',
-            run.status === 'failed'
-              ? 'bg-rose-500/15 text-rose-200 ring-rose-500/20'
-              : 'bg-amber-500/15 text-amber-200 ring-amber-500/20',
-          )}>
-            {run.status === 'failed' ? <XCircle className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-            {run.status}
-          </span>
-        </td>
-        <td className="px-4 py-3 text-slate-400 text-xs">
-          <div>{format(new Date(run.started_at), 'MMM d, yyyy')}</div>
-          <div className="text-slate-500">{format(new Date(run.started_at), 'HH:mm:ss')}</div>
-        </td>
-        <td className="px-4 py-3 text-right text-rose-300 font-medium">{run.errors_count}</td>
-        <td className="px-4 py-3 text-right text-slate-400">{run.pages_visited}</td>
-      </tr>
-      {expanded && hasMessages && (
-        <tr>
-          <td colSpan={7} className="px-4 pb-4 pt-1">
-            <ul className="space-y-1.5">
-              {run.error_messages!.map((msg, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 rounded-xl border border-rose-500/20 bg-rose-950/30 px-3 py-2 text-xs text-rose-200"
-                >
-                  <SeverityDot tone="rose" />
-                  <span className="break-all">{msg}</span>
-                </li>
-              ))}
-            </ul>
-          </td>
-        </tr>
-      )}
-    </>
-  )
-}
-
-function RunsErrorPanel({
+function RunsPanel({
   runs,
   sourceNameById,
   title,
@@ -222,25 +218,67 @@ function RunsErrorPanel({
 
   return (
     <SectionCard eyebrow={eyebrow} title={title} description={description}>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-left text-[11px] uppercase tracking-[0.28em] text-slate-500">
-            <tr>
-              <th className="px-4 py-3" />
-              <th className="px-4 py-3">Run</th>
-              <th className="px-4 py-3">Source</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Started</th>
-              <th className="px-4 py-3 text-right">Errors</th>
-              <th className="px-4 py-3 text-right">Pages</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/80">
-            {runs.map((run) => (
-              <RunErrorRow key={run.id} run={run} sourceName={sourceNameById[run.source_id]} />
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-4">
+        {runs.map((run) => (
+          <div
+            key={run.id}
+            className={cx(
+              'rounded-2xl border p-4',
+              run.status === 'failed'
+                ? 'border-rose-500/20 bg-rose-950/20'
+                : 'border-amber-500/15 bg-amber-950/15',
+            )}
+          >
+            {/* run header */}
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={cx(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1',
+                run.status === 'failed'
+                  ? 'bg-rose-500/15 text-rose-200 ring-rose-500/20'
+                  : 'bg-amber-500/15 text-amber-200 ring-amber-500/20',
+              )}>
+                {run.status === 'failed' ? <XCircle className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                {run.status}
+              </span>
+              <span className="text-sm font-medium text-slate-200">
+                Run #{run.id} — {sourceNameById[run.source_id] ?? `Source #${run.source_id}`}
+              </span>
+              <span className="ml-auto text-xs text-slate-500">
+                {format(new Date(run.started_at), 'MMM d, yyyy HH:mm:ss')}
+              </span>
+              <span className="text-xs text-slate-400">
+                {run.errors_count} error{run.errors_count !== 1 ? 's' : ''} · {run.pages_visited} pages
+              </span>
+            </div>
+
+            {/* error messages */}
+            {(run.error_messages?.length ?? 0) > 0 ? (
+              <ul className="mt-3 space-y-1.5">
+                {run.error_messages!.map((msg, i) => (
+                  <li
+                    key={i}
+                    className={cx(
+                      'flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-mono',
+                      run.status === 'failed'
+                        ? 'bg-rose-950/50 text-rose-200'
+                        : 'bg-amber-950/50 text-amber-200',
+                    )}
+                  >
+                    <span className={cx(
+                      'mt-1 h-1.5 w-1.5 shrink-0 rounded-full',
+                      run.status === 'failed' ? 'bg-rose-400' : 'bg-amber-400',
+                    )} />
+                    <span className="break-all">{msg}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500 italic">
+                errors_count = {run.errors_count} but no error_messages stored for this run.
+              </p>
+            )}
+          </div>
+        ))}
       </div>
     </SectionCard>
   )
@@ -255,7 +293,7 @@ function SystemAlertsPanel({
   healthData: { worker: { status: string; active_crawls: number }; migrations: { pending: number; current_revision: string | null; head_revision: string | null } } | undefined
   queues: { pending: number | null; processing: number | null; dead_letter: number | null; deadLetterLatest: { failure_reason: string | null; source_id: number | null; failed_at: string | null } | null } | undefined
 }) {
-  const alerts: Array<{ tone: 'rose' | 'amber' | 'slate'; icon: typeof AlertTriangle; message: string; detail?: string }> = []
+  const alerts: Array<{ tone: 'rose' | 'amber'; icon: typeof AlertTriangle; message: string; detail?: string }> = []
 
   if (healthData?.migrations.pending && healthData.migrations.pending > 0) {
     alerts.push({
@@ -364,6 +402,19 @@ export default function DebugPage() {
   const failedRuns = runs.filter((r) => r.status === 'failed')
   const runsWithErrors = runs.filter((r) => r.status !== 'failed' && r.errors_count > 0)
 
+  // build flat error feed: all error_messages from all relevant runs, newest run first
+  const errorFeedEntries: ErrorEntry[] = [...failedRuns, ...runsWithErrors]
+    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+    .flatMap((run) =>
+      (run.error_messages ?? []).map((message) => ({
+        message,
+        runId: run.id,
+        sourceName: sourceNameById[run.source_id] ?? `Source #${run.source_id}`,
+        timestamp: run.started_at,
+        severity: run.status === 'failed' ? ('error' as const) : ('warning' as const),
+      })),
+    )
+
   const queueInfo = statsQuery.data?.queues
     ? {
         pending: statsQuery.data.queues.pending.length,
@@ -415,18 +466,20 @@ export default function DebugPage() {
 
           <SystemAlertsPanel healthData={healthQuery.data} queues={queueInfo} />
 
+          <ErrorFeed entries={errorFeedEntries} />
+
           <SourceIssuesPanel sources={sources} />
 
-          <RunsErrorPanel
+          <RunsPanel
             runs={failedRuns}
             sourceNameById={sourceNameById}
             eyebrow="Crawler"
             title="Failed Runs"
-            description={failedRuns.length ? `${failedRuns.length} run${failedRuns.length !== 1 ? 's' : ''} ended in failure — expand a row to see error messages` : undefined}
+            description={failedRuns.length ? `${failedRuns.length} run${failedRuns.length !== 1 ? 's' : ''} ended in failure` : undefined}
             emptyMessage="No failed runs."
           />
 
-          <RunsErrorPanel
+          <RunsPanel
             runs={runsWithErrors}
             sourceNameById={sourceNameById}
             eyebrow="Crawler"
