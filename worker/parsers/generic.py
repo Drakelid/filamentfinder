@@ -799,17 +799,36 @@ class GenericParser(BaseParser):
         currency = None
         list_price = None
         
-        # polyalkemi.no: Knockout.js product detail pages use span.bold for both prices AND
-        # weight/specification values. select_one('span.bold') can match a weight element
-        # (e.g. "0,25 kg") before the actual price span, producing a wrong extraction.
-        # Prefer the Knockout data-bind="html: Price" span, then fall back to the first
-        # bold span whose text contains a recognisable Norwegian price pattern (digits + ,-/kr/NOK).
+        # polyalkemi.no product detail pages:
+        #
+        # 1. The GTM dataLayer is server-rendered and always contains the correct retail
+        #    price even before Knockout.js has run — use it as the primary source.
+        # 2. Fall back to Knockout-rendered spans for cases where the dataLayer is absent.
+        #    The data-bind attribute value "html: Price1" (not "html: Price" used on listing
+        #    cards) distinguishes the price span from weight/spec spans that also use
+        #    span.bold, preventing the "0,25 kg → 0.25 kr" false extraction.
         if 'polyalkemi.no' in urlparse(url).netloc:
-            price_elem = soup.select_one(
-                'span.bold[data-bind*="Price"], span.bold[data-bind*="price"]'
-            )
-            if price_elem:
-                price, currency = self._extract_price_from_text(price_elem.get_text(strip=True), url)
+            for script in soup.find_all('script'):
+                script_text = script.string or ''
+                m = re.search(
+                    r"""['\"]RetailPrice['\"]:\s*['\"]([0-9]+(?:[.,][0-9]+)?)['\"]""",
+                    script_text,
+                )
+                if m:
+                    try:
+                        price = Decimal(m.group(1).replace(',', '.'))
+                        currency = 'NOK'
+                    except Exception:
+                        pass
+                    if price:
+                        break
+
+            if not price:
+                price_elem = soup.select_one(
+                    'span.bold[data-bind*="Price1"], span.price[data-bind*="Price1"]'
+                )
+                if price_elem:
+                    price, currency = self._extract_price_from_text(price_elem.get_text(strip=True), url)
             if not price:
                 for span in soup.find_all('span', class_='bold'):
                     t = span.get_text(strip=True)

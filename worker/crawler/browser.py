@@ -27,10 +27,13 @@ DOMAIN_READY_SELECTORS = {
     ],
     'polyalkemi.no': [
         # polyalkemi.no uses a custom Knockout.js platform — NOT WooCommerce.
-        # Wait for the rendered product card container.
-        '.WebPubElement.pub-productlisting',
-        '.pub-productlisting',
-        '.ad-buy-button',  # "Kjøp" buttons confirm products have loaded
+        # All prices are populated dynamically; static HTML has only empty Knockout
+        # placeholders.  Wait for a span.bold that actually contains a comma — the
+        # ",-" suffix used in every Norwegian price (e.g. "239,-") — which only
+        # appears AFTER Knockout has fetched product data and rendered the bindings.
+        # This prevents page.content() from being called with empty price spans.
+        # Playwright's :has-text() pseudo-class is used here (not standard CSS).
+        'span.bold:has-text(",")',
     ],
     '3dnet.no': [
         '.thumbnail[itemtype*="Product"]',
