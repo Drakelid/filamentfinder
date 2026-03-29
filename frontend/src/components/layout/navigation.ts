@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, Database, History, Package, Settings, ShoppingCart, TrendingDown, Truck } from 'lucide-react'
+import { BarChart3, Bug, Database, History, Package, Settings, ShoppingCart, TrendingDown, Truck } from 'lucide-react'
 
 export type NavItem = {
   label: string
@@ -35,6 +35,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Shipping', to: '/shipping', icon: Truck, keywords: ['shipping', 'fees', 'logistics'] },
       { label: 'Configuration', to: '/config', icon: Settings, keywords: ['configuration', 'vpn', 'proxy', 'settings'] },
+      { label: 'Debug', to: '/debug', icon: Bug, keywords: ['debug', 'errors', 'warnings', 'logs', 'issues'] },
     ],
   },
 ]
@@ -49,6 +50,7 @@ export const PAGE_TITLES: Record<string, { title: string; description: string; s
   '/runs': { title: 'Scan History', description: 'Crawler runs and execution history', section: 'MONITOR' },
   '/shipping': { title: 'Shipping', description: 'Per-source shipping fee configuration', section: 'SETTINGS' },
   '/config': { title: 'Configuration', description: 'VPN, crawler, notifications, and data settings', section: 'SETTINGS' },
+  '/debug': { title: 'Debug', description: 'Aggregated errors, warnings, and system health', section: 'SETTINGS' },
 }
 
 export function resolvePageMeta(pathname: string) {

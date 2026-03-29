@@ -168,6 +168,21 @@ export interface WireGuardConfigUploadResult {
   restart_error: string | null
 }
 
+export interface QueueStats {
+  pending: { key: string; length: number | null }
+  processing: { key: string; length: number | null }
+  dead_letter: {
+    key: string
+    length: number | null
+    latest: {
+      job_id: string | null
+      source_id: number | null
+      failure_reason: string | null
+      failed_at: string | null
+    } | null
+  }
+}
+
 export interface StatsData {
   overview: {
     total_sources: number
@@ -216,6 +231,7 @@ export interface StatsData {
       status: string | null
     } | null
   }>
+  queues?: QueueStats
 }
 
 export interface HealthData {
@@ -543,10 +559,11 @@ export const api = {
   },
   
   runs: {
-    list: (params?: { source_id?: number; status?: string }) => {
+    list: (params?: { source_id?: number; status?: string; limit?: number }) => {
       const searchParams = new URLSearchParams()
       if (params?.source_id) searchParams.set('source_id', params.source_id.toString())
       if (params?.status) searchParams.set('status', params.status)
+      if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
       const query = searchParams.toString()
       return fetchApi<{ items: CrawlRun[]; total: number }>(`/runs${query ? `?${query}` : ''}`)
     },
