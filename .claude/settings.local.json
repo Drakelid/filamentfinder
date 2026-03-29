@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:polyalkemi.no)"
+      "WebFetch(domain:polyalkemi.no)",
+      "WebFetch(domain:csmegastore.no)"
     ]
   }
 }

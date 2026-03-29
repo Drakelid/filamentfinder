@@ -28,12 +28,16 @@ DOMAIN_READY_SELECTORS = {
     'polyalkemi.no': [
         # polyalkemi.no uses a custom Knockout.js platform — NOT WooCommerce.
         # All prices are populated dynamically; static HTML has only empty Knockout
-        # placeholders.  Wait for a span.bold that actually contains a comma — the
-        # ",-" suffix used in every Norwegian price (e.g. "239,-") — which only
-        # appears AFTER Knockout has fetched product data and rendered the bindings.
-        # This prevents page.content() from being called with empty price spans.
-        # Playwright's :has-text() pseudo-class is used here (not standard CSS).
-        'span.bold:has-text(",")',
+        # placeholders.  We must wait until an actual price has rendered before
+        # calling page.content().
+        #
+        # Prices are formatted "XXX,-" (e.g. "239,-", "1 490,-").
+        # Spec/weight spans such as "1,75 mm" or "0,25 kg" also use span.bold and
+        # contain a comma, but they never contain the ",-" suffix.
+        # :has-text(",-") therefore only fires once a real price is present, not on
+        # weight or diameter values — preventing premature snapshotting that would
+        # leave price spans empty and cause fallback logic to pick up weight values.
+        'span.bold:has-text(",-")',
     ],
     '3dnet.no': [
         '.thumbnail[itemtype*="Product"]',
@@ -55,10 +59,14 @@ DOMAIN_READY_SELECTORS = {
         '[class*="price"]',
     ],
     'csmegastore.no': [
-        # Products are rendered via JS (SPA); wait for product cards or anchor links
-        'div.product-card',
-        'a[href*="/i/"]',
+        # csmegastore.no (formerly computersalg.no) is a full SPA; all product data
+        # is rendered client-side after an API fetch.  The static HTML already
+        # contains a gift-card anchor matching a[href*="/i/"], so that selector
+        # fires immediately on the shell — before any product listings exist.
+        # span.price and div.product-card are only inserted by the JS renderer,
+        # so they reliably indicate that product data has actually loaded.
         'span.price',
+        'div.product-card',
     ],
 }
 

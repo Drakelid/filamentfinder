@@ -29,7 +29,6 @@ class GenericParser(BaseParser):
         '#price',
         '.price-current',
         '.price-now',
-        'span.bold',  # polyalkemi.no Knockout.js rendered price
         'span[class*="price"]',
         'div[class*="price"]',
     ]
@@ -800,39 +799,27 @@ class GenericParser(BaseParser):
         list_price = None
         
         # polyalkemi.no product detail pages:
+        # Prices are populated by Knockout.js after an API call — the static HTML
+        # dataLayer has RetailPrice: '' (empty) on detail pages, so we cannot rely
+        # on server-rendered data.  Instead we look at the Knockout-rendered span.
         #
-        # 1. The GTM dataLayer is server-rendered and always contains the correct retail
-        #    price even before Knockout.js has run — use it as the primary source.
-        # 2. Fall back to Knockout-rendered spans for cases where the dataLayer is absent.
-        #    The data-bind attribute value "html: Price1" (not "html: Price" used on listing
-        #    cards) distinguishes the price span from weight/spec spans that also use
-        #    span.bold, preventing the "0,25 kg → 0.25 kr" false extraction.
+        # The price span binding is "html: Price" (listing cards also use "html: Price";
+        # product detail pages sometimes use "html: Price1" — match both with *="Price").
+        # Weight/spec spans use bindings like "html: ProduktDesc1" which do NOT contain
+        # "Price", so this selector is unambiguous.
         if 'polyalkemi.no' in urlparse(url).netloc:
-            for script in soup.find_all('script'):
-                script_text = script.string or ''
-                m = re.search(
-                    r"""['\"]RetailPrice['\"]:\s*['\"]([0-9]+(?:[.,][0-9]+)?)['\"]""",
-                    script_text,
-                )
-                if m:
-                    try:
-                        price = Decimal(m.group(1).replace(',', '.'))
-                        currency = 'NOK'
-                    except Exception:
-                        pass
-                    if price:
-                        break
-
-            if not price:
-                price_elem = soup.select_one(
-                    'span.bold[data-bind*="Price1"], span.price[data-bind*="Price1"]'
-                )
-                if price_elem:
-                    price, currency = self._extract_price_from_text(price_elem.get_text(strip=True), url)
+            price_elem = soup.select_one(
+                'span.bold[data-bind*="Price"], span.price[data-bind*="Price"]'
+            )
+            if price_elem:
+                price, currency = self._extract_price_from_text(price_elem.get_text(strip=True), url)
+            # Broader scan: any span.bold whose text is a recognisable Norwegian price
+            # ("XXX,-").  Spec spans ("1,75 mm", "0,25 kg") never end with ",-" so they
+            # are excluded by the pattern.
             if not price:
                 for span in soup.find_all('span', class_='bold'):
                     t = span.get_text(strip=True)
-                    if re.search(r'\d[\d\s,.]*\s*(?:,-|kr|NOK)', t, re.IGNORECASE):
+                    if re.search(r'\d[\d\s,.]*,-', t):
                         price, currency = self._extract_price_from_text(t, url)
                         if price:
                             break
@@ -853,15 +840,49 @@ class GenericParser(BaseParser):
                             currency = self._extract_currency(elem.get_text(), url)
                         break
 
-        # csmegastore.no detail pages: price is in <div class="banner_32"><div><span>NOK X</span></div></div>
+        # csmegastore.no (formerly computersalg.no) detail pages.
+        # The site has been rebranded and the DOM changes between deploys, so we
+        # try a cascade of selectors rather than relying on a single class name.
         if not price and 'csmegastore.no' in urlparse(url).netloc:
-            banner = soup.select_one('div.banner_32 span, div.banner_32')
-            if banner:
-                price, currency = self._extract_price_from_text(banner.get_text(strip=True), url)
+            # 1. Structured-data / itemprop (most stable across redesigns)
+            itemprop_price = soup.select_one('[itemprop="price"]')
+            if itemprop_price:
+                raw = itemprop_price.get('content') or itemprop_price.get_text(strip=True)
+                price = self._clean_price(raw)
+                if price:
+                    currency = 'NOK'
+
+            # 2. Open Graph price meta tag
             if not price:
-                # Fallback: find any element whose sole text is "NOK <amount>".
-                # Allow space/nbsp as thousands separator (e.g. "NOK 1 234,00").
+                og_price = soup.select_one('meta[property="product:price:amount"]')
+                if og_price:
+                    price = self._clean_price(og_price.get('content'))
+                    if price:
+                        currency = 'NOK'
+
+            # 3. Known class selectors (computersalg / csmegastore rendered DOM)
+            if not price:
+                for sel in (
+                    'span.price',
+                    '.m-product-card__price',
+                    'div.banner_32 span',
+                    'div.banner_32',
+                    '.product-price',
+                    '.current-price',
+                    '[class*="price"]',
+                ):
+                    elem = soup.select_one(sel)
+                    if elem:
+                        price, currency = self._extract_price_from_text(elem.get_text(strip=True), url)
+                        if price:
+                            break
+
+            # 4. Broadest fallback: any leaf element whose sole text is "NOK <amount>"
+            if not price:
                 for elem in soup.find_all(['span', 'p', 'div']):
+                    # Skip elements that contain child elements (not leaf nodes)
+                    if elem.find(['span', 'p', 'div', 'a']):
+                        continue
                     text = elem.get_text(strip=True)
                     if re.match(r'^NOK[\s\xa0]+\d[\d\s\xa0.,]*$', text, re.IGNORECASE):
                         price, currency = self._extract_price_from_text(text, url)
@@ -1035,7 +1056,6 @@ class GenericParser(BaseParser):
                 '.product-list-item__price',  # Multicom.no
                 '.listing-price',  # Multicom.no (alt)
                 'p.price',  # avxperten.no
-                'span.bold',  # polyalkemi.no Knockout.js rendered price
                 '.price--current',
                 '.price--reduced',
                 '.sale-price',
