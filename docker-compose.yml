@@ -47,11 +47,12 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - GLUETUN_ENABLED=${GLUETUN_ENABLED:-false}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - DEBUG=${DEBUG:-false}
-      - CORS_ORIGINS=${CORS_ORIGINS:-https://fredrikdrakelid.asuscomm.com}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://filament.devdeploy.online/}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-}
       - CONFIG_ENCRYPTION_KEY=${CONFIG_ENCRYPTION_KEY:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -74,8 +75,9 @@ services:
       context: .
       dockerfile: worker/Dockerfile
     environment:
-      - DATABASE_URL=postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://filamentfinder:filamentfinder@db:5432/filamentfinder}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - GLUETUN_ENABLED=${GLUETUN_ENABLED:-false}
       - CRAWLER_USER_AGENT=${CRAWLER_USER_AGENT:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36}
       - CRAWLER_RATE_LIMIT=${CRAWLER_RATE_LIMIT:-1.0}
       - CRAWLER_MAX_PAGES=${CRAWLER_MAX_PAGES:-100}
@@ -104,7 +106,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_BASE: ${VITE_BASE:-/filamentfinder/}
+        VITE_BASE: ${VITE_BASE:-/}
         VITE_ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     expose:
       - "3030"

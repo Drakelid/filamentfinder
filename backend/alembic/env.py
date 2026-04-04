@@ -6,6 +6,8 @@ from sqlalchemy import pool
 
 from alembic import context
 
+from shared.network import normalize_container_service_urls
+
 config = context.config
 
 if config.config_file_name is not None:
@@ -15,7 +17,11 @@ from app.models import Base
 target_metadata = Base.metadata
 
 def get_url():
-    return os.getenv("DATABASE_URL", "postgresql://filamentfinder:filamentfinder@localhost:5432/filamentfinder")
+    raw_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql://filamentfinder:filamentfinder@localhost:5432/filamentfinder",
+    )
+    return normalize_container_service_urls(raw_url)
 
 
 def run_migrations_offline() -> None:
