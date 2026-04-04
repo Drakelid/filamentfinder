@@ -2,7 +2,7 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-ARG VITE_BASE=/filamentfinder/
+ARG VITE_BASE=/
 ARG VITE_ADMIN_API_KEY=
 
 ENV VITE_BASE=$VITE_BASE
