@@ -77,7 +77,7 @@ export default function AddSourceModal({
         url,
         name: name || undefined,
         crawl_rules: crawlRules,
-        selector_overrides: templatePreset?.selectorOverrides,
+        selector_overrides: templatePreset?.selectorOverrides ?? undefined,
       })
     },
     onSuccess: () => {
@@ -99,7 +99,9 @@ export default function AddSourceModal({
           </h2>
           {templatePreset && (
             <p className="mt-2 text-sm text-slate-400">
-              Starts with the built-in <span className="font-medium text-slate-200">{templatePreset.parser}</span> strategy and its recommended crawl defaults.
+              {templatePreset.source === 'built_in'
+                ? <>Starts with the built-in <span className="font-medium text-slate-200">{templatePreset.parser}</span> strategy and its recommended crawl defaults.</>
+                : <>Applies the saved <span className="font-medium text-slate-200">{templatePreset.parser}</span> preset, including crawl defaults and selector overrides.</>}
             </p>
           )}
         </div>
@@ -109,9 +111,16 @@ export default function AddSourceModal({
           {templatePreset && (
             <div className="rounded-3xl border border-violet-500/20 bg-violet-950/20 p-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-200">
-                  Priority {templatePreset.priority}
-                </span>
+                {typeof templatePreset.priority === 'number' && (
+                  <span className="rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-200">
+                    Priority {templatePreset.priority}
+                  </span>
+                )}
+                {templatePreset.source === 'custom' && (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-200">
+                    Custom preset
+                  </span>
+                )}
                 <span className="rounded-full border border-slate-700 bg-slate-950/60 px-2.5 py-1 text-xs text-slate-300">
                   {templatePreset.parser}
                 </span>

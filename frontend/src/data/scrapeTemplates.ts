@@ -1,21 +1,25 @@
-import type { CrawlRules, SelectorOverrides } from '../api'
+import type { CrawlRules, CustomScrapeTemplate, SelectorOverrides } from '../api'
 
 export type ScrapeTemplate = {
   id: string
+  source: 'built_in' | 'custom'
   name: string
   parser: string
-  priority: number
+  priority?: number
   description: string
   detectionSignals: string[]
   strengths: string[]
   coverage: string[]
   crawlRules?: Partial<CrawlRules>
-  selectorOverrides?: Partial<SelectorOverrides>
+  selectorOverrides?: Partial<SelectorOverrides> | null
+  createdAt?: string
+  updatedAt?: string
 }
 
 export const SCRAPE_TEMPLATES: ScrapeTemplate[] = [
   {
     id: 'jsonld',
+    source: 'built_in',
     name: 'JSON-LD Structured Data',
     parser: 'JsonLdParser',
     priority: 100,
@@ -32,6 +36,7 @@ export const SCRAPE_TEMPLATES: ScrapeTemplate[] = [
   },
   {
     id: 'shopify',
+    source: 'built_in',
     name: 'Shopify Storefront',
     parser: 'ShopifyParser',
     priority: 90,
@@ -48,6 +53,7 @@ export const SCRAPE_TEMPLATES: ScrapeTemplate[] = [
   },
   {
     id: 'woocommerce',
+    source: 'built_in',
     name: 'WooCommerce',
     parser: 'WooCommerceParser',
     priority: 80,
@@ -64,6 +70,7 @@ export const SCRAPE_TEMPLATES: ScrapeTemplate[] = [
   },
   {
     id: 'magento',
+    source: 'built_in',
     name: 'Magento',
     parser: 'MagentoParser',
     priority: 70,
@@ -80,6 +87,7 @@ export const SCRAPE_TEMPLATES: ScrapeTemplate[] = [
   },
   {
     id: 'generic',
+    source: 'built_in',
     name: 'Generic HTML Heuristics',
     parser: 'GenericParser',
     priority: 0,
@@ -105,3 +113,20 @@ export const GENERIC_HEURISTIC_COVERAGE = [
   'polyalkemi.no custom product cards',
   'Proshop, Elefun, Computersalg, and Multicom selector packs',
 ]
+
+export function mapCustomScrapeTemplate(template: CustomScrapeTemplate): ScrapeTemplate {
+  return {
+    id: template.id,
+    source: 'custom',
+    name: template.name,
+    parser: template.parser,
+    description: template.description,
+    detectionSignals: template.detection_signals,
+    strengths: template.strengths,
+    coverage: template.coverage,
+    crawlRules: template.crawl_rules,
+    selectorOverrides: template.selector_overrides,
+    createdAt: template.created_at,
+    updatedAt: template.updated_at,
+  }
+}

@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
+from app.schemas.source import CrawlRules, SelectorOverrides
+
 
 class ConfigBase(BaseModel):
     key: str
@@ -129,3 +131,32 @@ class NotificationConfigUpdate(BaseModel):
     notification_email: Optional[str] = Field(default=None, max_length=255)
     webhook_url: Optional[str] = Field(default=None, max_length=2048)
     webhook_secret: Optional[str] = Field(default=None, max_length=512)
+
+
+class ScrapeTemplateBase(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    parser: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=1500)
+    detection_signals: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    coverage: list[str] = Field(default_factory=list)
+    crawl_rules: CrawlRules = Field(default_factory=CrawlRules)
+    selector_overrides: Optional[SelectorOverrides] = None
+
+
+class ScrapeTemplateCreate(ScrapeTemplateBase):
+    pass
+
+
+class ScrapeTemplateUpdate(ScrapeTemplateBase):
+    pass
+
+
+class ScrapeTemplateResponse(ScrapeTemplateBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ScrapeTemplateListResponse(BaseModel):
+    items: list[ScrapeTemplateResponse]

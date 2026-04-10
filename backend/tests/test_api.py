@@ -398,3 +398,73 @@ class TestConfigAPI:
             "current_server": None,
             "current_ip": None,
         }
+
+    def test_scrape_template_crud(self, client):
+        create_response = client.post(
+            "/api/config/scrape-templates",
+            json={
+                "name": "Custom Nordic preset",
+                "parser": "Custom selector preset",
+                "description": "Saved selectors for a recurring custom storefront.",
+                "detection_signals": ["data-product-grid", "price-box"],
+                "strengths": ["Reusable selector overrides"],
+                "coverage": ["Custom storefront"],
+                "crawl_rules": {
+                    "max_pages": 42,
+                    "max_depth": 2,
+                    "same_domain_only": True,
+                    "url_patterns": ["*/filament/*"],
+                    "exclude_patterns": ["*/sale/*"],
+                    "respect_robots_txt": True,
+                },
+                "selector_overrides": {
+                    "price": ".product-price",
+                    "product_name": "h1.product-title",
+                },
+            },
+        )
+        assert create_response.status_code == 201
+        created = create_response.json()
+        assert created["name"] == "Custom Nordic preset"
+        assert created["crawl_rules"]["max_pages"] == 42
+
+        list_response = client.get("/api/config/scrape-templates")
+        assert list_response.status_code == 200
+        items = list_response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["id"] == created["id"]
+
+        update_response = client.put(
+            f"/api/config/scrape-templates/{created['id']}",
+            json={
+                "name": "Updated preset",
+                "parser": "Selector override preset",
+                "description": "Updated template",
+                "detection_signals": ["updated-signal"],
+                "strengths": ["Updated strength"],
+                "coverage": ["Updated coverage"],
+                "crawl_rules": {
+                    "max_pages": 64,
+                    "max_depth": 3,
+                    "same_domain_only": False,
+                    "url_patterns": [],
+                    "exclude_patterns": [],
+                    "respect_robots_txt": False,
+                },
+                "selector_overrides": {
+                    "price": ".new-price",
+                },
+            },
+        )
+        assert update_response.status_code == 200
+        updated = update_response.json()
+        assert updated["name"] == "Updated preset"
+        assert updated["crawl_rules"]["max_pages"] == 64
+        assert updated["selector_overrides"]["price"] == ".new-price"
+
+        delete_response = client.delete(f"/api/config/scrape-templates/{created['id']}")
+        assert delete_response.status_code == 204
+
+        final_list_response = client.get("/api/config/scrape-templates")
+        assert final_list_response.status_code == 200
+        assert final_list_response.json()["items"] == []

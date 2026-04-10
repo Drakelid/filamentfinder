@@ -49,6 +49,20 @@ export interface SelectorOverrides {
   product_links?: string
 }
 
+export interface CustomScrapeTemplate {
+  id: string
+  name: string
+  parser: string
+  description: string
+  detection_signals: string[]
+  strengths: string[]
+  coverage: string[]
+  crawl_rules: CrawlRules
+  selector_overrides: SelectorOverrides | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ScrapeStats {
   last_1h: number
   last_12h: number
@@ -452,6 +466,7 @@ export const api = {
     getVpn: () => fetchApi<VPNConfig>('/config/vpn'),
     getCrawler: () => fetchApi<CrawlerConfig>('/config/crawler'),
     getNotifications: () => fetchApi<NotificationConfig>('/config/notifications'),
+    getScrapeTemplates: () => fetchApi<{ items: CustomScrapeTemplate[] }>('/config/scrape-templates'),
     updateVpn: (data: {
       account_number?: string
       socks_proxy?: string
@@ -463,6 +478,27 @@ export const api = {
       fetchApi<CrawlerConfig>('/config/crawler', { method: 'PUT', body: JSON.stringify(data) }),
     updateNotifications: (data: NotificationConfigUpdate) =>
       fetchApi<NotificationConfig>('/config/notifications', { method: 'PUT', body: JSON.stringify(data) }),
+    createScrapeTemplate: (data: {
+      name: string
+      parser: string
+      description: string
+      detection_signals: string[]
+      strengths: string[]
+      coverage: string[]
+      crawl_rules: CrawlRules
+      selector_overrides?: SelectorOverrides | null
+    }) => fetchApi<CustomScrapeTemplate>('/config/scrape-templates', { method: 'POST', body: JSON.stringify(data) }),
+    updateScrapeTemplate: (id: string, data: {
+      name: string
+      parser: string
+      description: string
+      detection_signals: string[]
+      strengths: string[]
+      coverage: string[]
+      crawl_rules: CrawlRules
+      selector_overrides?: SelectorOverrides | null
+    }) => fetchApi<CustomScrapeTemplate>(`/config/scrape-templates/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteScrapeTemplate: (id: string) => fetchApi<void>(`/config/scrape-templates/${id}`, { method: 'DELETE' }),
     testVpn: () => fetchApi<VPNStatus>('/config/vpn/test', { method: 'POST' }),
   },
 

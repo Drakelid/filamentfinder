@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import docker
 import httpx
@@ -27,6 +28,10 @@ from app.schemas.config import (
     CrawlerConfigUpdate,
     NotificationConfigResponse,
     NotificationConfigUpdate,
+    ScrapeTemplateCreate,
+    ScrapeTemplateListResponse,
+    ScrapeTemplateResponse,
+    ScrapeTemplateUpdate,
     VPNConfigUpdate,
     VPNConfigResponse,
     VPNStatusResponse,
@@ -70,6 +75,8 @@ NOTIFICATION_CONFIG_DESCRIPTIONS = {
 }
 LEGACY_CRAWLER_USER_AGENT = "FilamentFinder/1.0 (+https://github.com/filamentfinder; bot)"
 DEFAULT_BROWSER_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+SCRAPE_TEMPLATES_CONFIG_KEY = "scrape_templates_json"
+SCRAPE_TEMPLATES_DESCRIPTION = "User-defined scraping templates"
 
 
 @lru_cache()
@@ -438,6 +445,39 @@ def get_notification_config_payload(db: Session) -> NotificationConfigResponse:
     )
 
 
+def get_scrape_templates_payload(db: Session) -> list[ScrapeTemplateResponse]:
+    raw = get_config_value(db, SCRAPE_TEMPLATES_CONFIG_KEY, "[]")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = []
+
+    if not isinstance(payload, list):
+        payload = []
+
+    templates: list[ScrapeTemplateResponse] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            templates.append(ScrapeTemplateResponse(**entry))
+        except Exception:
+            continue
+
+    templates.sort(key=lambda template: (template.updated_at, template.created_at), reverse=True)
+    return templates
+
+
+def save_scrape_templates_payload(db: Session, templates: list[ScrapeTemplateResponse]):
+    serialized = [template.model_dump(mode="json") for template in templates]
+    set_config_value(
+        db,
+        SCRAPE_TEMPLATES_CONFIG_KEY,
+        json.dumps(serialized),
+        description=SCRAPE_TEMPLATES_DESCRIPTION,
+    )
+
+
 @router.get("/vpn", response_model=VPNConfigResponse)
 def get_vpn_config(db: Session = Depends(get_db)):
     """Get VPN configuration."""
@@ -581,6 +621,75 @@ def update_crawler_config(config: CrawlerConfigUpdate, db: Session = Depends(get
 def get_notification_config(db: Session = Depends(get_db)):
     """Get notification configuration."""
     return get_notification_config_payload(db)
+
+
+@router.get("/scrape-templates", response_model=ScrapeTemplateListResponse)
+def get_scrape_templates(db: Session = Depends(get_db)):
+    """Get user-defined scraping templates."""
+    return ScrapeTemplateListResponse(items=get_scrape_templates_payload(db))
+
+
+@router.post("/scrape-templates", response_model=ScrapeTemplateResponse, status_code=201)
+def create_scrape_template(template: ScrapeTemplateCreate, db: Session = Depends(get_db)):
+    """Create a user-defined scraping template."""
+    templates = get_scrape_templates_payload(db)
+    now = datetime.now(timezone.utc)
+    created = ScrapeTemplateResponse(
+        id=str(uuid4()),
+        name=template.name,
+        parser=template.parser,
+        description=template.description,
+        detection_signals=template.detection_signals,
+        strengths=template.strengths,
+        coverage=template.coverage,
+        crawl_rules=template.crawl_rules,
+        selector_overrides=template.selector_overrides,
+        created_at=now,
+        updated_at=now,
+    )
+    templates.append(created)
+    save_scrape_templates_payload(db, templates)
+    return created
+
+
+@router.put("/scrape-templates/{template_id}", response_model=ScrapeTemplateResponse)
+def update_scrape_template(template_id: str, template: ScrapeTemplateUpdate, db: Session = Depends(get_db)):
+    """Update a user-defined scraping template."""
+    templates = get_scrape_templates_payload(db)
+    for index, existing in enumerate(templates):
+        if existing.id != template_id:
+            continue
+
+        updated = ScrapeTemplateResponse(
+            id=existing.id,
+            name=template.name,
+            parser=template.parser,
+            description=template.description,
+            detection_signals=template.detection_signals,
+            strengths=template.strengths,
+            coverage=template.coverage,
+            crawl_rules=template.crawl_rules,
+            selector_overrides=template.selector_overrides,
+            created_at=existing.created_at,
+            updated_at=datetime.now(timezone.utc),
+        )
+        templates[index] = updated
+        save_scrape_templates_payload(db, templates)
+        return updated
+
+    raise HTTPException(status_code=404, detail="Scrape template not found")
+
+
+@router.delete("/scrape-templates/{template_id}", status_code=204)
+def delete_scrape_template(template_id: str, db: Session = Depends(get_db)):
+    """Delete a user-defined scraping template."""
+    templates = get_scrape_templates_payload(db)
+    remaining = [template for template in templates if template.id != template_id]
+    if len(remaining) == len(templates):
+        raise HTTPException(status_code=404, detail="Scrape template not found")
+
+    save_scrape_templates_payload(db, remaining)
+    return None
 
 
 @router.put("/notifications", response_model=NotificationConfigResponse)
