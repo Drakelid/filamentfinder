@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, Bug, Database, History, Package, Settings, ShoppingCart, TrendingDown, Truck } from 'lucide-react'
+import { BarChart3, Bug, Database, History, LayoutTemplate, Package, Settings, ShoppingCart, TrendingDown, Truck } from 'lucide-react'
 
 export type NavItem = {
   label: string
@@ -26,6 +26,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'MONITOR',
     items: [
       { label: 'Sources', to: '/sources', icon: Database, keywords: ['sources', 'stores', 'retailers'] },
+      { label: 'Templates', to: '/templates', icon: LayoutTemplate, keywords: ['templates', 'scraper templates', 'parsers'] },
       { label: 'Statistics', to: '/stats', icon: BarChart3, keywords: ['statistics', 'stats', 'overview'] },
       { label: 'Scan History', to: '/runs', icon: History, keywords: ['scan history', 'runs', 'jobs'] },
     ],
@@ -43,6 +44,7 @@ export const NAV_SECTIONS: NavSection[] = [
 export const PAGE_TITLES: Record<string, { title: string; description: string; section: string }> = {
   '/': { title: 'Sources', description: 'Retailers, crawl rules, and source health', section: 'MONITOR' },
   '/sources': { title: 'Sources', description: 'Retailers, crawl rules, and source health', section: 'MONITOR' },
+  '/templates': { title: 'Scraping Templates', description: 'Built-in parser presets and source setup shortcuts', section: 'MONITOR' },
   '/stats': { title: 'Statistics', description: 'System health and aggregate tracking data', section: 'MONITOR' },
   '/products': { title: 'Products', description: 'Browse tracked filament and resin listings', section: 'BROWSE' },
   '/deals': { title: 'Deals', description: 'Live price drops from the last 48 hours', section: 'BROWSE' },

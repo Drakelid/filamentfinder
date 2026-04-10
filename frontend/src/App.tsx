@@ -9,6 +9,7 @@ import ConfigPage from './pages/ConfigPage'
 import StatsPage from './pages/StatsPage'
 import ShippingPage from './pages/ShippingPage'
 import DebugPage from './pages/DebugPage'
+import ScrapeTemplatesPage from './pages/ScrapeTemplatesPage'
 import AppShell from './components/layout/AppShell'
 import { ToastProvider } from './components/ui/Toast'
 
@@ -27,6 +28,7 @@ function AppRoutes() {
       <Route path="/price-changes" element={<PriceChangesPage />} />
       <Route path="/runs" element={<RunsPage />} />
       <Route path="/shipping" element={<ShippingPage />} />
+      <Route path="/templates" element={<ScrapeTemplatesPage />} />
       <Route path="/config" element={<ConfigPage />} />
       <Route path="/stats" element={<StatsPage />} />
       <Route path="/debug" element={<DebugPage />} />

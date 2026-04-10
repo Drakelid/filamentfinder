@@ -24,6 +24,9 @@ class WooCommerceParser(BaseParser):
     def can_parse(self, html: str, url: str, headers: Dict[str, str]) -> bool:
         """Check if this is a WooCommerce store."""
         html_lower = html.lower()
+
+        if 'class="woocommerce' in html_lower or "class='woocommerce" in html_lower:
+            return True
         
         # Need at least 2 indicators to be confident it's WooCommerce
         matches = 0

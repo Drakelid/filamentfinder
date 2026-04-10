@@ -372,6 +372,7 @@ class ScanWorker:
                     # Parse the product page
                     from worker.parsers import get_parser
                     parser = get_parser(html, url, headers)
+                    parser.set_selector_overrides(source.selector_overrides)
                     parsed_product = parser.parse_product(html, url)
                     
                     if parsed_product and parsed_product.price:

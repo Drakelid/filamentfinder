@@ -13,14 +13,16 @@ import {
   Plus,
   RefreshCw,
   Ship,
+  Sparkles,
   Trash2,
   Upload,
   XCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
-import { api, Source, CrawlRules, getSourcesExportUrl, importSources } from '../api'
+import { api, Source, getSourcesExportUrl, importSources } from '../api'
 import { ActionMenu, EmptyState, LoadingState, MiniSparkline, MetricCard, SectionCard, StatusDot, cx } from '../components/admin/AdminUI'
+import AddSourceModal from '../components/sources/AddSourceModal'
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -40,119 +42,6 @@ function StatusBadge({ status }: { status: string }) {
       {icons[status]}
       {status}
     </span>
-  )
-}
-
-const DAY_OPTIONS = [
-  { value: 'mon', label: 'Mon' },
-  { value: 'tue', label: 'Tue' },
-  { value: 'wed', label: 'Wed' },
-  { value: 'thu', label: 'Thu' },
-  { value: 'fri', label: 'Fri' },
-  { value: 'sat', label: 'Sat' },
-  { value: 'sun', label: 'Sun' },
-]
-
-function AddSourceModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [url, setUrl] = useState('')
-  const [name, setName] = useState('')
-  const [maxPages, setMaxPages] = useState(100)
-  const [maxDepth, setMaxDepth] = useState(3)
-  const [scheduleStart, setScheduleStart] = useState('')
-  const [scheduleEnd, setScheduleEnd] = useState('')
-  const [scheduleTimezone, setScheduleTimezone] = useState('')
-  const [scheduleDays, setScheduleDays] = useState<string[]>([])
-  const [error, setError] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: () => {
-      const crawlRules: Partial<CrawlRules> = { max_pages: maxPages, max_depth: maxDepth }
-      if (scheduleStart) crawlRules.schedule_start_hour = scheduleStart
-      if (scheduleEnd) crawlRules.schedule_end_hour = scheduleEnd
-      if (scheduleTimezone) crawlRules.schedule_timezone = scheduleTimezone
-      if (scheduleDays.length) crawlRules.schedule_days = scheduleDays
-      return api.sources.create({ url, name: name || undefined, crawl_rules: crawlRules })
-    },
-    onSuccess: () => {
-      onSuccess()
-      onClose()
-    },
-    onError: (err: Error) => setError(err.message),
-  })
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl shadow-black/40">
-        <div className="border-b border-slate-800 px-6 py-4">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-slate-500">Source setup</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-100">Add Source</h2>
-        </div>
-        <div className="space-y-5 px-6 py-5">
-          {error && <div className="rounded-2xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{error}</div>}
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-300">URL *</span>
-              <input value={url} onChange={(e) => setUrl(e.target.value)} type="url" placeholder="https://store.example.com/filaments" className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-300">Name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="My Favorite Store" className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 placeholder-slate-500 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-            </label>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-300">Max pages</span>
-              <input type="number" value={maxPages} onChange={(e) => setMaxPages(parseInt(e.target.value, 10) || 100)} min={1} max={10000} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-300">Max depth</span>
-              <input type="number" value={maxDepth} onChange={(e) => setMaxDepth(parseInt(e.target.value, 10) || 3)} min={1} max={10} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/30" />
-            </label>
-          </div>
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/30 p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Start time</span>
-                <input type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">End time</span>
-                <input type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100" />
-              </label>
-              <label className="space-y-2">
-                <span className="text-sm text-slate-300">Timezone</span>
-                <input type="text" placeholder="Europe/Oslo" value={scheduleTimezone} onChange={(e) => setScheduleTimezone(e.target.value)} className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-slate-100" />
-              </label>
-              <div className="space-y-2">
-                <span className="text-sm text-slate-300">Days allowed</span>
-                <div className="flex flex-wrap gap-2">
-                  {DAY_OPTIONS.map((day) => {
-                    const active = scheduleDays.includes(day.value)
-                    return (
-                      <button
-                        key={day.value}
-                        type="button"
-                        onClick={() => setScheduleDays((prev) => (prev.includes(day.value) ? prev.filter((d) => d !== day.value) : [...prev, day.value]))}
-                        className={cx('rounded-full border px-3 py-1.5 text-xs transition-colors', active ? 'border-violet-500/40 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200')}
-                      >
-                        {day.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 border-t border-slate-800 px-6 py-4">
-          <button onClick={onClose} className="rounded-xl px-4 py-2 text-slate-300 hover:bg-slate-800">Cancel</button>
-          <button onClick={() => mutation.mutate()} disabled={!url || mutation.isPending} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">
-            {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Add Source
-          </button>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -252,6 +141,10 @@ export default function SourcesPage() {
           {importError && <p className="mt-1 text-sm text-rose-300">{importError}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <button onClick={() => navigate('/templates')} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800">
+            <Sparkles className="h-4 w-4" />
+            Templates
+          </button>
           <a href={getSourcesExportUrl()} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800">
             <Download className="h-4 w-4" />
             Export JSON
