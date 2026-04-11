@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
+import { Check, CheckCircle, Copy, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
 import {
+  ADMIN_API_KEY,
   api,
   CrawlerConfig,
   NotificationConfig,
@@ -60,6 +61,7 @@ export default function ConfigPage() {
   const [showAccountNumber, setShowAccountNumber] = useState(false)
   const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [showWebhookSecret, setShowWebhookSecret] = useState(false)
+  const [showAdminApiKey, setShowAdminApiKey] = useState(false)
   const [enabled, setEnabled] = useState(false)
   const [autoRotate, setAutoRotate] = useState(true)
   const [rotateInterval, setRotateInterval] = useState(30)
@@ -70,6 +72,7 @@ export default function ConfigPage() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState(TABS[0])
+  const [copiedField, setCopiedField] = useState<'api-url' | 'api-key' | null>(null)
   const wireguardInputRef = useRef<HTMLInputElement | null>(null)
 
   const vpnConfigQuery = useQuery<VPNConfig>({
@@ -248,6 +251,20 @@ export default function ConfigPage() {
 
   const vpnConfigured = displayedConfig.enabled && (displayedConfig.proxy_configured || displayedConfig.gluetun_mode)
   const vpnVerified = testResult?.connected === true
+  const extensionApiBaseUrl = new URL(import.meta.env.BASE_URL, window.location.origin).toString().replace(/\/$/, '')
+  const extensionApiKey = ADMIN_API_KEY ?? ''
+
+  const copyToClipboard = async (value: string, field: 'api-url' | 'api-key') => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedField(field)
+      window.setTimeout(() => {
+        setCopiedField((current) => (current === field ? null : current))
+      }, 2000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to copy value')
+    }
+  }
 
   if (vpnConfigQuery.isLoading || crawlerConfigQuery.isLoading || notificationConfigQuery.isLoading) {
     return <LoadingState label="Loading configuration" />
@@ -267,6 +284,86 @@ export default function ConfigPage() {
       </div>
 
       <TabStrip tabs={TABS} active={activeTab} onChange={setActiveTab} />
+
+      <SectionCard
+        eyebrow="Integrations"
+        title="Chrome extension access"
+        description="Use these values in the FilamentFinder Template Builder extension Settings tab."
+        action={
+          <span
+            className={cx(
+              'rounded-full px-3 py-1 text-xs font-medium',
+              extensionApiKey ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-200',
+            )}
+          >
+            {extensionApiKey ? 'API key available' : 'API key not exposed'}
+          </span>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-300">API Base URL</span>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                readOnly
+                value={extensionApiBaseUrl}
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 font-mono text-sm text-slate-100"
+              />
+              <button
+                type="button"
+                onClick={() => copyToClipboard(extensionApiBaseUrl, 'api-url')}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800"
+              >
+                {copiedField === 'api-url' ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+                {copiedField === 'api-url' ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">Paste this into the extension's API Base URL field.</p>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-300">API Key</span>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showAdminApiKey ? 'text' : 'password'}
+                  readOnly
+                  value={extensionApiKey}
+                  placeholder={extensionApiKey ? '' : 'No admin API key is exposed to this frontend'}
+                  className="w-full rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 pr-11 font-mono text-sm text-slate-100 placeholder-slate-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminApiKey((prev) => !prev)}
+                  disabled={!extensionApiKey}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                >
+                  {showAdminApiKey ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(extensionApiKey, 'api-key')}
+                disabled={!extensionApiKey}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+              >
+                {copiedField === 'api-key' ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
+                {copiedField === 'api-key' ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Paste this into the extension's API Key field. If you rotate <code>ADMIN_API_KEY</code>, restart or redeploy the frontend so this value refreshes.
+            </p>
+          </label>
+        </div>
+
+        {!extensionApiKey && (
+          <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+            This frontend does not currently expose an admin API key. If the backend requires <code>X-API-Key</code>, make sure the frontend receives the same <code>ADMIN_API_KEY</code> value at runtime so it can be shown here.
+          </div>
+        )}
+      </SectionCard>
 
       {error && <div className="rounded-3xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{error}</div>}
       {saveSuccess && <div className="rounded-3xl border border-emerald-500/20 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">Configuration saved successfully</div>}
