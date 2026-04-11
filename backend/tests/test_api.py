@@ -79,6 +79,23 @@ class TestStructuredErrorResponse:
         assert "message" in data["errors"][0]
 
 
+class TestCors:
+    def test_preflight_allows_chrome_extension_origin(self, client):
+        response = client.options(
+            "/api/config/scrape-templates",
+            headers={
+                "Origin": "chrome-extension://abcdefghijklmnopabcdefghijklmnop",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+
+        assert response.status_code == 200
+        assert (
+            response.headers["access-control-allow-origin"]
+            == "chrome-extension://abcdefghijklmnopabcdefghijklmnop"
+        )
+
+
 class TestSourcesAPI:
     def test_create_source(self, client):
         response = client.post(

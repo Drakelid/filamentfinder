@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FilamentFinder Template Builder</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">FilamentFinder</p>
+          <h1>Template Builder</h1>
+        </div>
+        <p class="hero-copy">Capture selectors on any storefront and save a reusable scrape template to your instance.</p>
+      </header>
+
+      <nav class="tabs" aria-label="Extension sections">
+        <button class="tab-button is-active" data-tab-target="settings" type="button">Settings</button>
+        <button class="tab-button" data-tab-target="builder" type="button">Template Builder</button>
+      </nav>
+
+      <section id="statusBanner" class="status-banner" hidden></section>
+
+      <section class="tab-panel is-active" data-tab-panel="settings">
+        <div class="panel-card">
+          <label class="field">
+            <span class="field-label">API Base URL</span>
+            <input id="apiUrlInput" class="text-input" type="url" placeholder="https://your-filamentfinder.domain" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">API Key</span>
+            <input id="apiKeyInput" class="text-input" type="password" placeholder="Leave blank if no API key is set" />
+          </label>
+
+          <div class="button-row">
+            <button id="saveSettingsButton" class="button button-primary" type="button">Save Settings</button>
+            <button id="testConnectionButton" class="button button-secondary" type="button">Test Connection</button>
+          </div>
+
+          <p id="settingsHint" class="hint-text">The extension sends <code>X-API-Key</code> only when you provide one.</p>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="builder">
+        <div class="panel-card stack-gap">
+          <div class="site-chip-row">
+            <span class="site-chip-label">Current site</span>
+            <span id="siteHostname" class="site-chip">Unavailable</span>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span class="field-label">Template name</span>
+              <input id="templateNameInput" class="text-input" type="text" placeholder="Prusa storefront preset" />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Parser label</span>
+              <input id="parserInput" class="text-input" type="text" value="Custom selector preset" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field-label">Description</span>
+            <textarea id="descriptionInput" class="text-area" rows="3" placeholder="What this preset is for and when to use it."></textarea>
+          </label>
+
+          <div class="section-header">
+            <div>
+              <p class="section-eyebrow">Selector Overrides</p>
+              <h2>Capture page elements</h2>
+            </div>
+            <p class="section-copy">Click <span class="inline-accent">Pick</span>, then choose an element on the active page.</p>
+          </div>
+
+          <div id="selectorRows" class="selector-list"></div>
+
+          <section class="accordion" data-expanded="false">
+            <button id="crawlRulesToggle" class="accordion-toggle" type="button" aria-expanded="false">
+              <span>
+                <span class="section-eyebrow">Crawl Rules</span>
+                <strong>Defaults and limits</strong>
+              </span>
+              <span id="crawlRulesChevron" class="accordion-chevron">+</span>
+            </button>
+
+            <div id="crawlRulesPanel" class="accordion-panel" hidden>
+              <div class="field-grid">
+                <label class="field">
+                  <span class="field-label">Max pages</span>
+                  <input id="maxPagesInput" class="text-input" type="number" min="1" value="100" />
+                </label>
+
+                <label class="field">
+                  <span class="field-label">Max depth</span>
+                  <input id="maxDepthInput" class="text-input" type="number" min="0" value="3" />
+                </label>
+              </div>
+
+              <div class="checkbox-grid">
+                <label class="checkbox-card">
+                  <input id="sameDomainOnlyInput" type="checkbox" checked />
+                  <span>Same domain only</span>
+                </label>
+
+                <label class="checkbox-card">
+                  <input id="respectRobotsInput" type="checkbox" checked />
+                  <span>Respect robots.txt</span>
+                </label>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span class="field-label">URL patterns</span>
+                  <textarea id="urlPatternsInput" class="text-area" rows="3" placeholder="One glob per line"></textarea>
+                </label>
+
+                <label class="field">
+                  <span class="field-label">Exclude patterns</span>
+                  <textarea id="excludePatternsInput" class="text-area" rows="3" placeholder="One glob per line"></textarea>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <button id="saveTemplateButton" class="button button-primary button-large" type="button">Save Template</button>
+        </div>
+      </section>
+    </main>
+
+    <template id="selectorRowTemplate">
+      <div class="selector-row">
+        <div class="selector-meta">
+          <label class="selector-label"></label>
+          <input class="text-input selector-input" type="text" readonly />
+        </div>
+        <div class="selector-actions">
+          <button class="button button-secondary selector-pick-button" type="button">Pick</button>
+          <button class="button button-ghost selector-clear-button" type="button">Clear</button>
+        </div>
+      </div>
+    </template>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

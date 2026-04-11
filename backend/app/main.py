@@ -66,6 +66,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
+    allow_origin_regex=r"^chrome-extension://.*$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
