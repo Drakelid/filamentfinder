@@ -1,5 +1,5 @@
 const APP_PREFIX = new URL(self.registration.scope).pathname;
-const CACHE_VERSION = '17';
+const CACHE_VERSION = '18';
 const CACHE_NAME = `filamentfinder-shell-v${CACHE_VERSION}`;
 const CORE_URLS = [
   APP_PREFIX,

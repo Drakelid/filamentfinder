@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Check, CheckCircle, Copy, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
+import { Check, CheckCircle, Copy, Download, Eye, EyeOff, Loader2, Save, Settings, TestTube, Upload, XCircle } from 'lucide-react'
 import {
   ADMIN_API_KEY,
   api,
@@ -253,6 +253,7 @@ export default function ConfigPage() {
   const vpnVerified = testResult?.connected === true
   const extensionApiBaseUrl = new URL(import.meta.env.BASE_URL, window.location.origin).toString().replace(/\/$/, '')
   const extensionApiKey = ADMIN_API_KEY ?? ''
+  const extensionDownloadUrl = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/downloads/filamentfinder-template-builder.zip`
 
   const copyToClipboard = async (value: string, field: 'api-url' | 'api-key') => {
     try {
@@ -288,18 +289,32 @@ export default function ConfigPage() {
       <SectionCard
         eyebrow="Integrations"
         title="Chrome extension access"
-        description="Use these values in the FilamentFinder Template Builder extension Settings tab."
+        description="Download the FilamentFinder Template Builder, then use these values in its Settings tab."
         action={
-          <span
-            className={cx(
-              'rounded-full px-3 py-1 text-xs font-medium',
-              extensionApiKey ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-200',
-            )}
-          >
-            {extensionApiKey ? 'API key available' : 'API key not exposed'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cx(
+                'rounded-full px-3 py-1 text-xs font-medium',
+                extensionApiKey ? 'bg-emerald-500/15 text-emerald-200' : 'bg-amber-500/15 text-amber-200',
+              )}
+            >
+              {extensionApiKey ? 'API key available' : 'API key not exposed'}
+            </span>
+            <a
+              href={extensionDownloadUrl}
+              download="filamentfinder-template-builder.zip"
+              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
+            >
+              <Download className="h-4 w-4" />
+              Download extension
+            </a>
+          </div>
         }
       >
+        <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+          Download the zip, extract it locally, then open <code>chrome://extensions</code>, enable Developer mode, and use <strong>Load unpacked</strong> on the extracted <code>chrome-ext</code> folder.
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <label className="space-y-2">
             <span className="text-sm font-medium text-slate-300">API Base URL</span>
